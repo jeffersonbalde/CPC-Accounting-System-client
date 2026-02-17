@@ -1,6 +1,12 @@
 // components/admin/Accounting/JournalEntryFormModal.jsx
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { FaFileInvoice, FaPlus, FaTrash, FaSave, FaTimes } from "react-icons/fa";
+import {
+  FaFileInvoice,
+  FaPlus,
+  FaTrash,
+  FaSave,
+  FaTimes,
+} from "react-icons/fa";
 import Portal from "../../../components/Portal";
 import { showAlert } from "../../../services/notificationService";
 
@@ -27,6 +33,33 @@ const JournalEntryFormModal = ({
   const [newlyAddedRows, setNewlyAddedRows] = useState(new Set());
   const [removingRows, setRemovingRows] = useState(new Set());
 
+  const formatAmountForDisplay = (value) => {
+    if (value === null || value === undefined) return "";
+    const raw = String(value);
+    if (!raw) return "";
+    const [intPartRaw, decPartRaw] = raw.split(".");
+    const intDigits = intPartRaw.replace(/\D/g, "");
+    if (!intDigits) return decPartRaw ? `0.${decPartRaw}` : "";
+    const intNumber = Number(intDigits);
+    if (!Number.isFinite(intNumber)) return raw;
+    const formattedInt = intNumber.toLocaleString("en-PH");
+    return decPartRaw !== undefined && decPartRaw !== ""
+      ? `${formattedInt}.${decPartRaw}`
+      : formattedInt;
+  };
+
+  const handleLineAmountChange = (index, field, input) => {
+    let cleaned = (input || "")
+      .toString()
+      .replace(/,/g, "")
+      .replace(/[^0-9.]/g, "");
+    const parts = cleaned.split(".");
+    if (parts.length > 2) {
+      cleaned = `${parts[0]}.${parts.slice(1).join("")}`;
+    }
+    onLineChange(index, field, cleaned);
+  };
+
   // Store initial form state when modal opens (only once)
   useEffect(() => {
     if (initialFormState.current === null) {
@@ -39,7 +72,9 @@ const JournalEntryFormModal = ({
   // Check if form has changes
   const checkFormChanges = useCallback((currentForm) => {
     if (!initialFormState.current) return false;
-    return JSON.stringify(currentForm) !== JSON.stringify(initialFormState.current);
+    return (
+      JSON.stringify(currentForm) !== JSON.stringify(initialFormState.current)
+    );
   }, []);
 
   // Track form changes
@@ -91,14 +126,7 @@ const JournalEntryFormModal = ({
     };
 
     document.addEventListener("keydown", handleEscapeKey);
-    document.body.classList.add("modal-open");
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", handleEscapeKey);
-      document.body.classList.remove("modal-open");
-      document.body.style.overflow = "auto";
-    };
+    return () => document.removeEventListener("keydown", handleEscapeKey);
   }, [submitting, handleCloseAttempt]);
 
   const handleBackdropClick = async (e) => {
@@ -108,24 +136,27 @@ const JournalEntryFormModal = ({
   };
 
   // Wrap onSubmit to reset hasUnsavedChanges after successful submission
-  const handleFormSubmit = useCallback((e) => {
-    e.preventDefault();
-    onSubmit(e);
-    // Reset unsaved changes flag - if submission fails, formData won't change
-    // and hasUnsavedChanges will be recalculated as true in the useEffect
-    // If submission succeeds, parent will reset formData, triggering recalculation
-    setHasUnsavedChanges(false);
-  }, [onSubmit]);
+  const handleFormSubmit = useCallback(
+    (e) => {
+      e.preventDefault();
+      onSubmit(e);
+      // Reset unsaved changes flag - if submission fails, formData won't change
+      // and hasUnsavedChanges will be recalculated as true in the useEffect
+      // If submission succeeds, parent will reset formData, triggering recalculation
+      setHasUnsavedChanges(false);
+    },
+    [onSubmit]
+  );
 
   // Handle add line with animation
   const handleAddLine = useCallback(() => {
     const newRowIndex = formData.lines.length;
     onAddLine();
     // Mark the new row as newly added
-    setNewlyAddedRows(prev => new Set([...prev, newRowIndex]));
+    setNewlyAddedRows((prev) => new Set([...prev, newRowIndex]));
     // Clear the animation class after animation completes
     setTimeout(() => {
-      setNewlyAddedRows(prev => {
+      setNewlyAddedRows((prev) => {
         const newSet = new Set(prev);
         newSet.delete(newRowIndex);
         return newSet;
@@ -134,19 +165,22 @@ const JournalEntryFormModal = ({
   }, [onAddLine, formData.lines.length]);
 
   // Handle remove line with animation
-  const handleRemoveLine = useCallback((index) => {
-    // Mark row as removing
-    setRemovingRows(prev => new Set([...prev, index]));
-    // Wait for animation to complete before actually removing
-    setTimeout(() => {
-      onRemoveLine(index);
-      setRemovingRows(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(index);
-        return newSet;
-      });
-    }, 300); // Match animation duration
-  }, [onRemoveLine]);
+  const handleRemoveLine = useCallback(
+    (index) => {
+      // Mark row as removing
+      setRemovingRows((prev) => new Set([...prev, index]));
+      // Wait for animation to complete before actually removing
+      setTimeout(() => {
+        onRemoveLine(index);
+        setRemovingRows((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(index);
+          return newSet;
+        });
+      }, 300); // Match animation duration
+    },
+    [onRemoveLine]
+  );
 
   return (
     <Portal>
@@ -278,16 +312,91 @@ const JournalEntryFormModal = ({
         .fadeInSlideDown {
           animation: fadeInSlideDown 0.3s ease-out forwards;
         }
+
+        /* Responsive: full-width modal on mobile */
+        @media (max-width: 767.98px) {
+          .journal-entry-modal-dialog {
+            max-width: 100%;
+            margin: 0.5rem;
+          }
+          .journal-entry-modal-dialog .modal-body {
+            max-height: 65vh;
+            padding: 0.75rem 1rem;
+          }
+          .journal-entry-modal-dialog .modal-header,
+          .journal-entry-modal-dialog .modal-footer {
+            padding: 0.75rem 1rem;
+          }
+          .journal-entry-modal-dialog .modal-footer {
+            flex-direction: column;
+            gap: 0.5rem;
+          }
+          .journal-entry-modal-dialog .modal-footer .btn {
+            min-height: 44px;
+            width: 100%;
+          }
+          .journal-entry-modal-dialog .card-header {
+            flex-direction: column;
+            align-items: stretch !important;
+            gap: 0.5rem;
+          }
+          .journal-entry-modal-dialog .card-header .btn {
+            align-self: stretch;
+          }
+          .journal-entry-modal-dialog .row > [class*="col-md-"] {
+            width: 100%;
+            margin-bottom: 0.5rem;
+          }
+          .journal-entry-modal-dialog .row > [class*="col-md-"]:last-child {
+            margin-bottom: 0;
+          }
+        }
+
+        /* Desktop: horizontal scroll for table on narrow viewports */
+        @media (min-width: 768px) {
+          .journal-entry-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+          .journal-entry-table-wrap table {
+            min-width: 640px;
+          }
+        }
+
+        /* Mobile: journal line cards */
+        .journal-line-card {
+          border-radius: 0.5rem;
+          border: 1px solid rgba(0,0,0,0.08);
+          overflow: hidden;
+        }
+        .journal-line-card .line-card-label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #495057;
+          margin-bottom: 0.25rem;
+        }
+        .journal-line-card .form-control,
+        .journal-line-card .form-select {
+          font-size: 0.9rem;
+        }
       `}</style>
       <div
-        className={`modal fade show d-block ${isClosing ? "modal-backdrop-animation exit" : "modal-backdrop-animation"}`}
+        className={`modal fade show d-block ${
+          isClosing
+            ? "modal-backdrop-animation exit"
+            : "modal-backdrop-animation"
+        }`}
         style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
         onClick={handleBackdropClick}
         tabIndex="-1"
       >
-        <div className="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+        <div className="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable journal-entry-modal-dialog">
           <div
-            className={`modal-content border-0 ${isClosing ? "modal-content-animation exit" : "modal-content-animation"}`}
+            className={`modal-content border-0 ${
+              isClosing
+                ? "modal-content-animation exit"
+                : "modal-content-animation"
+            }`}
             style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
           >
             <div
@@ -397,16 +506,20 @@ const JournalEntryFormModal = ({
                       }}
                       onMouseEnter={(e) => {
                         if (!e.target.disabled) {
-                          e.target.style.backgroundColor = "var(--primary-dark)";
+                          e.target.style.backgroundColor =
+                            "var(--primary-dark)";
                           e.target.style.transform = "translateY(-1px)";
-                          e.target.style.boxShadow = "0 4px 8px rgba(0,0,0,0.15)";
+                          e.target.style.boxShadow =
+                            "0 4px 8px rgba(0,0,0,0.15)";
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!e.target.disabled) {
-                          e.target.style.backgroundColor = "var(--primary-color)";
+                          e.target.style.backgroundColor =
+                            "var(--primary-color)";
                           e.target.style.transform = "translateY(0)";
-                          e.target.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
+                          e.target.style.boxShadow =
+                            "0 2px 4px rgba(0,0,0,0.1)";
                         }
                       }}
                     >
@@ -415,7 +528,8 @@ const JournalEntryFormModal = ({
                     </button>
                   </div>
                   <div className="card-body p-0">
-                    <div className="table-responsive">
+                    {/* Desktop: table */}
+                    <div className="table-responsive d-none d-md-block journal-entry-table-wrap">
                       <table className="table table-sm table-hover mb-0">
                         <thead className="table-light">
                           <tr>
@@ -432,129 +546,136 @@ const JournalEntryFormModal = ({
                           {formData.lines.map((line, index) => {
                             const isNewlyAdded = newlyAddedRows.has(index);
                             const isRemoving = removingRows.has(index);
-                            const animationClass = isRemoving 
-                              ? "row-slide-out" 
-                              : isNewlyAdded 
-                              ? "row-slide-in" 
+                            const animationClass = isRemoving
+                              ? "row-slide-out"
+                              : isNewlyAdded
+                              ? "row-slide-in"
                               : "";
-                            
+
                             return (
-                            <tr 
-                              key={index}
-                              className={animationClass}
-                              style={isRemoving ? { display: "table-row" } : {}}
-                            >
-                              <td>
-                                <select
-                                  className={`form-select form-select-sm ${
-                                    formErrors[`line_${index}_account`]
-                                      ? "is-invalid"
-                                      : ""
-                                  }`}
-                                  value={line.account_id}
-                                  onChange={(e) =>
-                                    onLineChange(
-                                      index,
-                                      "account_id",
-                                      e.target.value
-                                    )
-                                  }
-                                  required
-                                  disabled={submitting}
-                                >
-                                  <option value="">Select Account</option>
-                                  {accounts.map((account) => (
-                                    <option key={account.id} value={account.id}>
-                                      {account.account_code} -{" "}
-                                      {account.account_name}
-                                    </option>
-                                  ))}
-                                </select>
-                                {formErrors[`line_${index}_account`] && (
-                                  <div className="invalid-feedback d-block">
-                                    {formErrors[`line_${index}_account`]}
-                                  </div>
-                                )}
-                              </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  className={`form-control form-control-sm ${
-                                    formErrors[`line_${index}_amount`]
-                                      ? "is-invalid"
-                                      : ""
-                                  }`}
-                                  value={line.debit_amount}
-                                  onChange={(e) =>
-                                    onLineChange(
-                                      index,
-                                      "debit_amount",
-                                      e.target.value
-                                    )
-                                  }
-                                  placeholder="0.00"
-                                  disabled={submitting}
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  className={`form-control form-control-sm ${
-                                    formErrors[`line_${index}_amount`]
-                                      ? "is-invalid"
-                                      : ""
-                                  }`}
-                                  value={line.credit_amount}
-                                  onChange={(e) =>
-                                    onLineChange(
-                                      index,
-                                      "credit_amount",
-                                      e.target.value
-                                    )
-                                  }
-                                  placeholder="0.00"
-                                  disabled={submitting}
-                                />
-                                {formErrors[`line_${index}_amount`] && (
-                                  <div className="invalid-feedback d-block">
-                                    {formErrors[`line_${index}_amount`]}
-                                  </div>
-                                )}
-                              </td>
-                              <td>
-                                <input
-                                  type="text"
-                                  className="form-control form-control-sm"
-                                  value={line.description}
-                                  onChange={(e) =>
-                                    onLineChange(
-                                      index,
-                                      "description",
-                                      e.target.value
-                                    )
-                                  }
-                                  placeholder="Optional"
-                                  disabled={submitting}
-                                />
-                              </td>
-                              <td>
-                                {formData.lines.length > 2 && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-outline-danger"
-                                    onClick={() => handleRemoveLine(index)}
-                                    disabled={submitting || isRemoving}
-                                    title="Remove line"
+                              <tr
+                                key={index}
+                                className={animationClass}
+                                style={
+                                  isRemoving ? { display: "table-row" } : {}
+                                }
+                              >
+                                <td>
+                                  <select
+                                    className={`form-select form-select-sm ${
+                                      formErrors[`line_${index}_account`]
+                                        ? "is-invalid"
+                                        : ""
+                                    }`}
+                                    value={line.account_id}
+                                    onChange={(e) =>
+                                      onLineChange(
+                                        index,
+                                        "account_id",
+                                        e.target.value
+                                      )
+                                    }
+                                    required
+                                    disabled={submitting}
                                   >
-                                    <FaTrash />
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
+                                    <option value="">Select Account</option>
+                                    {accounts.map((account) => (
+                                      <option
+                                        key={account.id}
+                                        value={account.id}
+                                      >
+                                        {account.account_code} -{" "}
+                                        {account.account_name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {formErrors[`line_${index}_account`] && (
+                                    <div className="invalid-feedback d-block">
+                                      {formErrors[`line_${index}_account`]}
+                                    </div>
+                                  )}
+                                </td>
+                                <td>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    className={`form-control form-control-sm ${
+                                      formErrors[`line_${index}_amount`]
+                                        ? "is-invalid"
+                                        : ""
+                                    }`}
+                                    value={formatAmountForDisplay(
+                                      line.debit_amount
+                                    )}
+                                    onChange={(e) =>
+                                      handleLineAmountChange(
+                                        index,
+                                        "debit_amount",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="0.00"
+                                    disabled={submitting}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    className={`form-control form-control-sm ${
+                                      formErrors[`line_${index}_amount`]
+                                        ? "is-invalid"
+                                        : ""
+                                    }`}
+                                    value={formatAmountForDisplay(
+                                      line.credit_amount
+                                    )}
+                                    onChange={(e) =>
+                                      handleLineAmountChange(
+                                        index,
+                                        "credit_amount",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="0.00"
+                                    disabled={submitting}
+                                  />
+                                  {formErrors[`line_${index}_amount`] && (
+                                    <div className="invalid-feedback d-block">
+                                      {formErrors[`line_${index}_amount`]}
+                                    </div>
+                                  )}
+                                </td>
+                                <td>
+                                  <input
+                                    type="text"
+                                    className="form-control form-control-sm"
+                                    value={line.description}
+                                    onChange={(e) =>
+                                      onLineChange(
+                                        index,
+                                        "description",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Optional"
+                                    disabled={submitting}
+                                  />
+                                </td>
+                                <td>
+                                  {formData.lines.length > 2 && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-danger"
+                                      onClick={() => handleRemoveLine(index)}
+                                      disabled={submitting || isRemoving}
+                                      title="Remove line"
+                                    >
+                                      <FaTrash />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
                             );
                           })}
                         </tbody>
@@ -591,7 +712,9 @@ const JournalEntryFormModal = ({
                                 <span className="badge bg-danger">
                                   <i className="fas fa-exclamation-triangle me-1"></i>
                                   Difference:{" "}
-                                  {Math.abs(totalDebit - totalCredit).toFixed(2)}
+                                  {Math.abs(totalDebit - totalCredit).toFixed(
+                                    2
+                                  )}
                                 </span>
                               )}
                             </td>
@@ -599,48 +722,270 @@ const JournalEntryFormModal = ({
                         </tfoot>
                       </table>
                     </div>
-                    {formErrors.balance && (() => {
-                      const balanceError = formErrors.balance;
-                      const match = balanceError.match(/Debits \(([\d,]+\.\d+)\) must equal Credits \(([\d,]+\.\d+)\)/);
-                      
-                      return (
-                        <div 
-                          className="alert alert-danger mt-2 mb-0 mx-3 border-0 shadow-sm"
-                          style={{
-                            animation: "fadeInSlideDown 0.3s ease-out",
-                            borderRadius: "0.5rem",
-                            backgroundColor: "#f8d7da",
-                            borderLeft: "4px solid #dc3545",
-                            padding: "0.75rem 1rem",
-                          }}
-                        >
-                          <div className="d-flex align-items-center">
-                            <i className="fas fa-exclamation-triangle me-2" style={{ fontSize: "1.1rem", color: "#dc3545" }}></i>
-                            <div className="flex-grow-1">
-                              <strong className="d-block mb-1" style={{ color: "#721c24", fontSize: "0.9rem" }}>
-                                Entry Not Balanced
-                              </strong>
-                              <div style={{ color: "#721c24", fontSize: "0.85rem", lineHeight: "1.5" }}>
-                                {match ? (
-                                  <>
-                                    <span>Debits </span>
-                                    <strong style={{ color: "#dc3545", fontSize: "0.95rem", fontWeight: "700" }}>
-                                      ({match[1]})
-                                    </strong>
-                                    <span> must equal Credits </span>
-                                    <strong style={{ color: "#dc3545", fontSize: "0.95rem", fontWeight: "700" }}>
-                                      ({match[2]})
-                                    </strong>
-                                  </>
-                                ) : (
-                                  balanceError
+
+                    {/* Mobile: card per line */}
+                    <div className="d-md-none px-2 pb-2">
+                      {formData.lines.map((line, index) => {
+                        const isRemoving = removingRows.has(index);
+                        const isNewlyAdded = newlyAddedRows.has(index);
+                        const animationClass = isRemoving
+                          ? "row-slide-out"
+                          : isNewlyAdded
+                          ? "row-slide-in"
+                          : "";
+                        return (
+                          <div
+                            key={index}
+                            className={`journal-line-card card shadow-sm mb-2 ${animationClass}`}
+                            style={isRemoving ? { display: "block" } : {}}
+                          >
+                            <div className="card-body p-3">
+                              <div className="d-flex justify-content-between align-items-center mb-2">
+                                <span className="text-muted small fw-semibold">
+                                  Line {index + 1}
+                                </span>
+                                {formData.lines.length > 2 && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-danger py-1 px-2"
+                                    onClick={() => handleRemoveLine(index)}
+                                    disabled={submitting || isRemoving}
+                                    title="Remove line"
+                                  >
+                                    <FaTrash />
+                                  </button>
                                 )}
+                              </div>
+                              <div className="mb-2">
+                                <label className="line-card-label d-block">
+                                  Account <span className="text-danger">*</span>
+                                </label>
+                                <select
+                                  className={`form-select form-select-sm ${
+                                    formErrors[`line_${index}_account`]
+                                      ? "is-invalid"
+                                      : ""
+                                  }`}
+                                  value={line.account_id}
+                                  onChange={(e) =>
+                                    onLineChange(
+                                      index,
+                                      "account_id",
+                                      e.target.value
+                                    )
+                                  }
+                                  required
+                                  disabled={submitting}
+                                >
+                                  <option value="">Select Account</option>
+                                  {accounts.map((account) => (
+                                    <option key={account.id} value={account.id}>
+                                      {account.account_code} -{" "}
+                                      {account.account_name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {formErrors[`line_${index}_account`] && (
+                                  <div className="invalid-feedback d-block">
+                                    {formErrors[`line_${index}_account`]}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="row g-2 mb-2">
+                                <div className="col-6">
+                                  <label className="line-card-label d-block">
+                                    Debit
+                                  </label>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    className={`form-control form-control-sm ${
+                                      formErrors[`line_${index}_amount`]
+                                        ? "is-invalid"
+                                        : ""
+                                    }`}
+                                    value={formatAmountForDisplay(
+                                      line.debit_amount
+                                    )}
+                                    onChange={(e) =>
+                                      handleLineAmountChange(
+                                        index,
+                                        "debit_amount",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="0.00"
+                                    disabled={submitting}
+                                  />
+                                </div>
+                                <div className="col-6">
+                                  <label className="line-card-label d-block">
+                                    Credit
+                                  </label>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    className={`form-control form-control-sm ${
+                                      formErrors[`line_${index}_amount`]
+                                        ? "is-invalid"
+                                        : ""
+                                    }`}
+                                    value={formatAmountForDisplay(
+                                      line.credit_amount
+                                    )}
+                                    onChange={(e) =>
+                                      handleLineAmountChange(
+                                        index,
+                                        "credit_amount",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="0.00"
+                                    disabled={submitting}
+                                  />
+                                  {formErrors[`line_${index}_amount`] && (
+                                    <div className="invalid-feedback d-block">
+                                      {formErrors[`line_${index}_amount`]}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="line-card-label d-block">
+                                  Description
+                                </label>
+                                <input
+                                  type="text"
+                                  className="form-control form-control-sm"
+                                  value={line.description}
+                                  onChange={(e) =>
+                                    onLineChange(
+                                      index,
+                                      "description",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Optional"
+                                  disabled={submitting}
+                                />
                               </div>
                             </div>
                           </div>
+                        );
+                      })}
+                      {/* Mobile totals */}
+                      <div className="card border-0 bg-light shadow-sm">
+                        <div className="card-body py-2 px-3 small">
+                          <div className="d-flex justify-content-between mb-1">
+                            <span className="fw-semibold text-muted">
+                              Total Debit
+                            </span>
+                            <span
+                              className={`fw-bold ${
+                                isBalanced ? "text-danger" : "text-danger"
+                              }`}
+                            >
+                              {totalDebit.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="d-flex justify-content-between mb-1">
+                            <span className="fw-semibold text-muted">
+                              Total Credit
+                            </span>
+                            <span
+                              className={`fw-bold ${
+                                isBalanced ? "text-success" : "text-danger"
+                              }`}
+                            >
+                              {totalCredit.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="d-flex justify-content-between align-items-center mt-1 pt-1 border-top">
+                            <span className="fw-semibold">Status</span>
+                            {isBalanced ? (
+                              <span className="badge bg-success">Balanced</span>
+                            ) : (
+                              <span className="badge bg-danger">
+                                Diff:{" "}
+                                {Math.abs(totalDebit - totalCredit).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      );
-                    })()}
+                      </div>
+                    </div>
+                    {formErrors.balance &&
+                      (() => {
+                        const balanceError = formErrors.balance;
+                        const match = balanceError.match(
+                          /Debits \(([\d,]+\.\d+)\) must equal Credits \(([\d,]+\.\d+)\)/
+                        );
+
+                        return (
+                          <div
+                            className="alert alert-danger mt-2 mb-0 mx-3 border-0 shadow-sm"
+                            style={{
+                              animation: "fadeInSlideDown 0.3s ease-out",
+                              borderRadius: "0.5rem",
+                              backgroundColor: "#f8d7da",
+                              borderLeft: "4px solid #dc3545",
+                              padding: "0.75rem 1rem",
+                            }}
+                          >
+                            <div className="d-flex align-items-center">
+                              <i
+                                className="fas fa-exclamation-triangle me-2"
+                                style={{ fontSize: "1.1rem", color: "#dc3545" }}
+                              ></i>
+                              <div className="flex-grow-1">
+                                <strong
+                                  className="d-block mb-1"
+                                  style={{
+                                    color: "#721c24",
+                                    fontSize: "0.9rem",
+                                  }}
+                                >
+                                  Entry Not Balanced
+                                </strong>
+                                <div
+                                  style={{
+                                    color: "#721c24",
+                                    fontSize: "0.85rem",
+                                    lineHeight: "1.5",
+                                  }}
+                                >
+                                  {match ? (
+                                    <>
+                                      <span>Debits </span>
+                                      <strong
+                                        style={{
+                                          color: "#dc3545",
+                                          fontSize: "0.95rem",
+                                          fontWeight: "700",
+                                        }}
+                                      >
+                                        ({match[1]})
+                                      </strong>
+                                      <span> must equal Credits </span>
+                                      <strong
+                                        style={{
+                                          color: "#dc3545",
+                                          fontSize: "0.95rem",
+                                          fontWeight: "700",
+                                        }}
+                                      >
+                                        ({match[2]})
+                                      </strong>
+                                    </>
+                                  ) : (
+                                    balanceError
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                   </div>
                 </div>
               </div>
@@ -684,4 +1029,3 @@ const JournalEntryFormModal = ({
 };
 
 export default JournalEntryFormModal;
-

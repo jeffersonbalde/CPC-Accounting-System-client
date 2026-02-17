@@ -189,8 +189,12 @@ const Login = () => {
     return <Preloader />;
   }
 
+  const currentYear = new Date().getFullYear();
+
   return (
-    <div className="min-vh-100 d-flex flex-column align-items-center justify-content-center position-relative py-3 py-md-4">
+    <div className="min-vh-100 d-flex flex-column position-relative w-100" style={{ minWidth: 0 }}>
+      {/* Main content – grows to push footer down */}
+      <div className="flex-grow-1 d-flex flex-column align-items-center justify-content-center py-3 py-md-4 w-100">
       {/* Background */}
       <div
         className="position-absolute top-0 start-0 w-100 h-100"
@@ -479,7 +483,42 @@ const Login = () => {
             font-size: 1.4rem !important;
           }
         }
+        /* Login page: ensure root and footer span full width */
+        .min-vh-100.d-flex.flex-column.position-relative.w-100 {
+          width: 100% !important;
+          max-width: 100%;
+        }
+        .login-page-footer {
+          width: 100% !important;
+          min-width: 100%;
+        }
       `}</style>
+      </div>
+
+      {/* Footer – full-width bar, centered content, government/corporate style */}
+      <footer
+        className="login-page-footer mt-auto flex-shrink-0 w-100"
+        style={{
+          zIndex: 10,
+          backgroundColor: "rgba(23, 29, 91, 0.92)",
+          borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+          color: "rgba(255, 255, 255, 0.95)",
+          fontSize: "clamp(0.75rem, 2vw, 0.8125rem)",
+          padding: "0.5rem 1.5rem",
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          className="mx-auto text-center"
+          style={{ maxWidth: "900px", width: "100%", paddingLeft: "1rem", paddingRight: "1rem", boxSizing: "border-box" }}
+        >
+          <p className="mb-0 small">
+            © {currentYear} CPC Growth Strategies, Inc. All rights reserved.
+            <span style={{ marginLeft: "0.35rem", marginRight: "0.35rem", opacity: 0.8 }}>·</span>
+            Authorized use only. Unauthorized access is prohibited.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 };

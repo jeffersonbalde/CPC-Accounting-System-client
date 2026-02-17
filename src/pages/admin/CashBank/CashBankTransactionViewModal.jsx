@@ -43,14 +43,7 @@ const CashBankTransactionViewModal = ({ transaction, account, onClose }) => {
 
   useEffect(() => {
     document.addEventListener("keydown", handleEscapeKey);
-    document.body.classList.add("modal-open");
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", handleEscapeKey);
-      document.body.classList.remove("modal-open");
-      document.body.style.overflow = "auto";
-    };
+    return () => document.removeEventListener("keydown", handleEscapeKey);
   }, []);
 
   return (
@@ -167,7 +160,9 @@ const CashBankTransactionViewModal = ({ transaction, account, onClose }) => {
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="form-label fw-semibold">Transaction Date</label>
+                  <label className="form-label fw-semibold">
+                    Transaction Date
+                  </label>
                   <div
                     className="form-control bg-white"
                     style={{ border: "1px solid var(--input-border)" }}
@@ -295,4 +290,3 @@ const CashBankTransactionViewModal = ({ transaction, account, onClose }) => {
 };
 
 export default CashBankTransactionViewModal;
-

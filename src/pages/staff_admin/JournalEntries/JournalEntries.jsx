@@ -4,10 +4,8 @@ import { showAlert, showToast } from "../../../services/notificationService";
 import { FaFileInvoice, FaPlus, FaTrash, FaEdit, FaEye, FaSave, FaTimes } from "react-icons/fa";
 import Portal from "../../../components/Portal";
 
-const API_BASE_URL = import.meta.env.VITE_LARAVEL_API || "http://localhost:8000/api";
-
 const JournalEntries = () => {
-  const { token } = useAuth();
+  const { request } = useAuth();
   const [entries, setEntries] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,17 +34,8 @@ const JournalEntries = () => {
 
   const fetchAccounts = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/accounting/chart-of-accounts?active_only=true`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAccounts(data);
-      }
+      const data = await request("/accounting/chart-of-accounts?active_only=true");
+      setAccounts(Array.isArray(data) ? data : data?.data || []);
     } catch (error) {
       console.error("Error fetching accounts:", error);
     }
@@ -55,19 +44,8 @@ const JournalEntries = () => {
   const fetchEntries = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/accounting/journal-entries?per_page=20`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch entries");
-      }
-
-      const data = await response.json();
-      setEntries(data.data || data);
+      const data = await request("/accounting/journal-entries?per_page=20");
+      setEntries(Array.isArray(data) ? data : data?.data || data || []);
     } catch (error) {
       console.error("Error fetching entries:", error);
       showToast.error("Failed to load journal entries");
@@ -180,25 +158,15 @@ const JournalEntries = () => {
       };
 
       const url = editingEntry
-        ? `${API_BASE_URL}/accounting/journal-entries/${editingEntry.id}`
-        : `${API_BASE_URL}/accounting/journal-entries`;
+        ? `/accounting/journal-entries/${editingEntry.id}`
+        : "/accounting/journal-entries";
 
       const method = editingEntry ? "PUT" : "POST";
 
-      const response = await fetch(url, {
+      await request(url, {
         method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(payload),
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to save journal entry");
-      }
 
       showToast.success(
         editingEntry ? "Journal entry updated successfully" : "Journal entry created successfully"
@@ -229,6 +197,10 @@ const JournalEntries = () => {
   };
 
   const handleEdit = (entry) => {
+    if (entry.source_document) {
+      showToast.warning(entry.source_document.edit_hint);
+      return;
+    }
     setEditingEntry(entry);
     setFormData({
       entry_date: entry.entry_date,
@@ -245,6 +217,11 @@ const JournalEntries = () => {
   };
 
   const handleDelete = async (entry) => {
+    if (entry.source_document) {
+      showToast.warning(entry.source_document.edit_hint);
+      return;
+    }
+
     const result = await showAlert.confirm(
       "Delete Journal Entry",
       `Are you sure you want to delete entry ${entry.entry_number}? This action cannot be undone.`
@@ -252,26 +229,15 @@ const JournalEntries = () => {
 
     if (result.isConfirmed) {
       try {
-        const response = await fetch(
-          `${API_BASE_URL}/accounting/journal-entries/${entry.id}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to delete entry");
-        }
+        await request(`/accounting/journal-entries/${entry.id}`, {
+          method: "DELETE",
+        });
 
         showToast.success("Journal entry deleted successfully");
         fetchEntries();
       } catch (error) {
         console.error("Error deleting entry:", error);
-        showToast.error("Failed to delete journal entry");
+        showToast.error(error.message || "Failed to delete journal entry");
       }
     }
   };
@@ -371,7 +337,18 @@ const JournalEntries = () => {
                         <strong>{entry.entry_number}</strong>
                       </td>
                       <td>{formatDate(entry.entry_date)}</td>
-                      <td>{entry.description}</td>
+                      <td>
+                        <div>{entry.description}</div>
+                        {entry.source_document && (
+                          <span
+                            className="badge bg-secondary mt-1"
+                            style={{ fontSize: "0.65rem" }}
+                            title={entry.source_document.edit_hint}
+                          >
+                            From {entry.source_document.type}: {entry.source_document.reference}
+                          </span>
+                        )}
+                      </td>
                       <td>{entry.reference_number || "-"}</td>
                       <td className="text-end text-danger">
                         <strong>{formatCurrency(entry.total_debit)}</strong>
@@ -391,14 +368,16 @@ const JournalEntries = () => {
                           <button
                             className="btn btn-outline-primary"
                             onClick={() => handleEdit(entry)}
-                            title="Edit"
+                            disabled={!!entry.source_document}
+                            title={entry.source_document ? entry.source_document.edit_hint : "Edit"}
                           >
                             <FaEdit />
                           </button>
                           <button
                             className="btn btn-outline-danger"
                             onClick={() => handleDelete(entry)}
-                            title="Delete"
+                            disabled={!!entry.source_document}
+                            title={entry.source_document ? entry.source_document.edit_hint : "Delete"}
                           >
                             <FaTrash />
                           </button>

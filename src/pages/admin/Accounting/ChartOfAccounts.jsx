@@ -3,10 +3,8 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { showAlert, showToast } from "../../../services/notificationService";
 import { FaBook, FaSearch, FaFilter } from "react-icons/fa";
 
-const API_BASE_URL = import.meta.env.VITE_LARAVEL_API || "http://localhost:8000/api";
-
 const ChartOfAccounts = () => {
-  const { token } = useAuth();
+  const { request } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [filteredAccounts, setFilteredAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,7 +18,6 @@ const ChartOfAccounts = () => {
     REVENUE: "Revenue",
     COST_OF_SERVICES: "Cost of Services",
     OPERATING_EXPENSES: "Operating Expenses",
-    OTHER_INCOME_EXPENSES: "Other Income & Expenses",
   };
 
   const accountTypeColors = {
@@ -30,7 +27,6 @@ const ChartOfAccounts = () => {
     REVENUE: "primary",
     COST_OF_SERVICES: "danger",
     OPERATING_EXPENSES: "danger",
-    OTHER_INCOME_EXPENSES: "secondary",
   };
 
   useEffect(() => {
@@ -44,19 +40,8 @@ const ChartOfAccounts = () => {
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/accounting/chart-of-accounts`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch accounts");
-      }
-
-      const data = await response.json();
-      setAccounts(data);
+      const data = await request("/accounting/chart-of-accounts");
+      setAccounts(Array.isArray(data) ? data : (data?.data || []));
     } catch (error) {
       console.error("Error fetching accounts:", error);
       showToast.error("Failed to load chart of accounts");

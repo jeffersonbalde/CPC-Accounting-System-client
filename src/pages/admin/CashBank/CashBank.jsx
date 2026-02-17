@@ -9,16 +9,28 @@ import {
   FaEye,
   FaChevronLeft,
   FaChevronRight,
+  FaChartBar,
+  FaChartPie,
 } from "react-icons/fa";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 import Portal from "../../../components/Portal";
 import LoadingSpinner from "../../../components/admin/LoadingSpinner";
 import CashBankTransactionViewModal from "./CashBankTransactionViewModal";
 
-const API_BASE_URL =
-  import.meta.env.VITE_LARAVEL_API || "http://localhost:8000/api";
-
 const CashBank = () => {
-  const { token } = useAuth();
+  const { request } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -59,26 +71,13 @@ const CashBank = () => {
       if (startDate) params.append("start_date", startDate);
       if (endDate) params.append("end_date", endDate);
 
-      const response = await fetch(
-        `${API_BASE_URL}/accounting/cash-bank?${params.toString()}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch cash accounts");
-      }
-
-      const data = await response.json();
-      setAccounts(data);
+      const data = await request(`/accounting/cash-bank?${params.toString()}`);
+      const list = Array.isArray(data) ? data : (data?.accounts || data || []);
+      setAccounts(list);
 
       // Select first account by default
-      if (data.length > 0 && !selectedAccount) {
-        setSelectedAccount(data[0].id);
+      if (list.length > 0 && !selectedAccount) {
+        setSelectedAccount(list[0].id);
       }
     } catch (error) {
       console.error("Error fetching cash accounts:", error);
@@ -174,7 +173,7 @@ const CashBank = () => {
         const description = (transaction.description || "").toLowerCase();
         const entryNumber = (transaction.entry_number || "").toLowerCase();
         const reference = (transaction.reference || "").toLowerCase();
-    return (
+        return (
           description.includes(loweredSearch) ||
           entryNumber.includes(loweredSearch) ||
           reference.includes(loweredSearch)
@@ -190,7 +189,11 @@ const CashBank = () => {
       if (sortField === "date") {
         aVal = aVal ? new Date(aVal).getTime() : 0;
         bVal = bVal ? new Date(bVal).getTime() : 0;
-      } else if (sortField === "description" || sortField === "entry_number" || sortField === "reference") {
+      } else if (
+        sortField === "description" ||
+        sortField === "entry_number" ||
+        sortField === "reference"
+      ) {
         aVal = (aVal || "").toLowerCase();
         bVal = (bVal || "").toLowerCase();
       } else {
@@ -223,15 +226,19 @@ const CashBank = () => {
       from: filteredTransactions.length > 0 ? startIndex + 1 : 0,
       to: Math.min(endIndex, filteredTransactions.length),
     };
-  }, [currentPage, totalPages, filteredTransactions.length, startIndex, endIndex]);
+  }, [
+    currentPage,
+    totalPages,
+    filteredTransactions.length,
+    startIndex,
+    endIndex,
+  ]);
 
   // Calculate statistics
   const stats = useMemo(() => {
     // If "All Accounts" is selected, aggregate from all accounts
     if (!selectedAccount || selectedAccount === "") {
-      const allTransactions = accounts.flatMap(
-        (acc) => acc.transactions || []
-      );
+      const allTransactions = accounts.flatMap((acc) => acc.transactions || []);
       const totalDebit = allTransactions.reduce(
         (sum, t) => sum + (parseFloat(t.debit) || 0),
         0
@@ -281,6 +288,59 @@ const CashBank = () => {
     };
   }, [selectedAccount, currentAccount, accounts]);
 
+  // Analytics chart data for "All Accounts" view (corporate dashboard)
+  const analyticsData = useMemo(() => {
+    if (!accounts.length) {
+      return {
+        balanceByAccount: [],
+        debitCreditSummary: [],
+        distributionPie: [],
+        transactionCountByAccount: [],
+        totalCashPosition: 0,
+      };
+    }
+    const balanceByAccount = accounts.map((acc) => ({
+      name: `${acc.account_code} ${acc.account_name}`,
+      shortName: acc.account_name,
+      code: acc.account_code,
+      balance: parseFloat(acc.current_balance) || 0,
+      transactions: (acc.transactions || []).length,
+    }));
+    const totalBalance = balanceByAccount.reduce((s, d) => s + d.balance, 0);
+    const totalDebit = accounts.flatMap((a) => a.transactions || []).reduce(
+      (s, t) => s + (parseFloat(t.debit) || 0),
+      0
+    );
+    const totalCredit = accounts.flatMap((a) => a.transactions || []).reduce(
+      (s, t) => s + (parseFloat(t.credit) || 0),
+      0
+    );
+    const palette = ["#0d6efd", "#198754", "#fd7e14", "#6f42c1"];
+    const shortLabel = (sn) =>
+      sn === "Cash on Hand" ? "On Hand" : sn === "Cash in Bank" ? "In Bank" : sn === "Petty Cash Fund" ? "Petty Cash" : sn;
+    const distributionPie = balanceByAccount
+      .map((d, i) => ({
+        name: d.shortName,
+        chartLabel: shortLabel(d.shortName),
+        value: Math.max(0, d.balance),
+        fill: palette[i % 4],
+      }))
+      .filter((d) => d.value > 0);
+    return {
+      balanceByAccount,
+      debitCreditSummary: [
+        { name: "Inflows (Credit)", value: totalCredit, fill: "#28a745" },
+        { name: "Outflows (Debit)", value: totalDebit, fill: "#dc3545" },
+      ],
+      distributionPie: distributionPie.length ? distributionPie : [{ name: "No balance", chartLabel: "No balance", value: 1, fill: "#dee2e6" }],
+      transactionCountByAccount: balanceByAccount.map((d) => ({
+        name: d.shortName,
+        count: d.transactions,
+      })),
+      totalCashPosition: totalBalance,
+    };
+  }, [accounts]);
+
   const handleSort = (field) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
@@ -296,7 +356,11 @@ const CashBank = () => {
   };
 
   const hasActiveFilters =
-    searchTerm || startDate || endDate || sortField !== "date" || sortDirection !== "desc";
+    searchTerm ||
+    startDate ||
+    endDate ||
+    sortField !== "date" ||
+    sortDirection !== "desc";
 
   const clearFilters = () => {
     setSearchTerm("");
@@ -375,6 +439,64 @@ const CashBank = () => {
         .modal-content-animation.exit {
           animation: modalContentSlideOut 0.2s ease-in forwards;
         }
+
+        /* Mobile: sticky # and Actions columns when table scrolls horizontally */
+        @media (max-width: 767.98px) {
+          .cash-bank-table-wrap {
+            position: relative;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            width: 100%;
+          }
+
+          .cash-bank-table-wrap table {
+            min-width: 820px;
+            border-collapse: separate;
+            border-spacing: 0;
+          }
+
+          .cash-bank-table-wrap .je-col-index,
+          .cash-bank-table-wrap .je-col-actions {
+            position: sticky;
+            background-color: #fff;
+            z-index: 10;
+            box-shadow: 1px 0 0 0 rgba(0, 0, 0, 0.05);
+          }
+
+          .cash-bank-table-wrap thead .je-col-index,
+          .cash-bank-table-wrap thead .je-col-actions {
+            z-index: 12;
+            background-color: #f8f9fa;
+          }
+
+          .cash-bank-table-wrap .je-col-index {
+            left: 0;
+            min-width: 44px;
+            width: 44px;
+          }
+
+          .cash-bank-table-wrap .je-col-actions {
+            left: 44px;
+            min-width: 56px;
+            width: 56px;
+          }
+
+          .cash-bank-table-wrap table.table-striped > tbody > tr:nth-of-type(odd) > .je-col-index,
+          .cash-bank-table-wrap table.table-striped > tbody > tr:nth-of-type(odd) > .je-col-actions {
+            background-color: #f9f9f9;
+          }
+
+          .cash-bank-table-wrap table.table-hover > tbody > tr:hover > .je-col-index,
+          .cash-bank-table-wrap table.table-hover > tbody > tr:hover > .je-col-actions {
+            background-color: #e9ecef;
+          }
+        }
+
+        .cash-bank-pie-chart .recharts-pie-label text,
+        .cash-bank-pie-chart .recharts-pie-label-text,
+        .cash-bank-pie-chart .recharts-label-text {
+          font-size: 10px !important;
+        }
       `}</style>
 
       {loading ? (
@@ -388,9 +510,9 @@ const CashBank = () => {
                 className="h4 mb-1 fw-bold"
                 style={{ color: "var(--text-primary)" }}
               >
-            <FaMoneyBillWave className="me-2" />
-            Cash & Bank
-          </h1>
+                <FaMoneyBillWave className="me-2" />
+                Cash & Bank
+              </h1>
               <p className="mb-0 small" style={{ color: "var(--text-muted)" }}>
                 Track cash and bank transactions
               </p>
@@ -424,8 +546,8 @@ const CashBank = () => {
                 <FaSyncAlt className="me-1" />
                 Refresh
               </button>
-        </div>
-      </div>
+            </div>
+          </div>
 
           {/* Statistics Cards */}
           <div className="row g-3 mb-4">
@@ -754,95 +876,113 @@ const CashBank = () => {
             </div>
           </div>
 
-          {/* Search and Filter Controls */}
+          {/* Search and Filter Controls - Corporate style */}
           <div
             className="card border-0 shadow-sm mb-3"
-            style={{ backgroundColor: "var(--background-white)" }}
+            style={{
+              backgroundColor: "var(--background-white)",
+              borderLeft: "4px solid var(--primary-color)",
+            }}
           >
+            <div
+              className="card-header py-2 px-3"
+              style={{
+                backgroundColor: "#f8f9fa",
+                borderBottom: "1px solid #dee2e6",
+              }}
+            >
+              <span className="fw-semibold small" style={{ color: "var(--text-primary)" }}>
+                <FaFilter className="me-1" style={{ color: "var(--primary-color)" }} />
+                Filters &amp; View
+              </span>
+              <span className="small text-muted ms-2">Account • Date range • Search</span>
+            </div>
             <div className="card-body p-3">
               <div className="row g-2 align-items-start">
                 <div className="col-12 col-md-3 col-lg-2">
                   <label
                     className="form-label small fw-semibold mb-1"
-                    style={{ 
+                    style={{
                       color: "var(--text-muted)",
-                      whiteSpace: "nowrap"
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    <FaFilter className="me-1" />
                     Account
                   </label>
-              <select
+                  <select
                     className="form-select form-select-sm"
-                value={selectedAccount || ""}
-                onChange={(e) => setSelectedAccount(parseInt(e.target.value))}
+                    value={selectedAccount || ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSelectedAccount(v === "" ? "" : parseInt(v, 10));
+                    }}
                     disabled={loading || isActionDisabled()}
                     style={{
                       backgroundColor: "var(--input-bg)",
                       borderColor: "var(--input-border)",
                       color: "var(--input-text)",
                     }}
-              >
-                <option value="">All Accounts</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.account_code} - {account.account_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  >
+                    <option value="">All Accounts</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.account_code} - {account.account_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="col-6 col-md-2 col-lg-2">
                   <label
                     className="form-label small fw-semibold mb-1"
-                    style={{ 
+                    style={{
                       color: "var(--text-muted)",
-                      whiteSpace: "nowrap"
+                      whiteSpace: "nowrap",
                     }}
                   >
                     Start Date
                   </label>
-              <input
-                type="date"
+                  <input
+                    type="date"
                     className="form-control form-control-sm"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
                     disabled={loading || isActionDisabled()}
                     style={{
                       backgroundColor: "var(--input-bg)",
                       borderColor: "var(--input-border)",
                       color: "var(--input-text)",
                     }}
-              />
-            </div>
+                  />
+                </div>
                 <div className="col-6 col-md-2 col-lg-2">
                   <label
                     className="form-label small fw-semibold mb-1"
-                    style={{ 
+                    style={{
                       color: "var(--text-muted)",
-                      whiteSpace: "nowrap"
+                      whiteSpace: "nowrap",
                     }}
                   >
                     End Date
                   </label>
-              <input
-                type="date"
+                  <input
+                    type="date"
                     className="form-control form-control-sm"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
                     disabled={loading || isActionDisabled()}
                     style={{
                       backgroundColor: "var(--input-bg)",
                       borderColor: "var(--input-border)",
                       color: "var(--input-text)",
                     }}
-              />
-            </div>
+                  />
+                </div>
                 <div className="col-12 col-md-5 col-lg-3">
                   <label
                     className="form-label small fw-semibold mb-1"
-                    style={{ 
+                    style={{
                       color: "var(--text-muted)",
-                      whiteSpace: "nowrap"
+                      whiteSpace: "nowrap",
                     }}
                   >
                     Search Transactions
@@ -906,14 +1046,14 @@ const CashBank = () => {
                         ></i>
                       </button>
                     )}
-          </div>
-        </div>
+                  </div>
+                </div>
                 <div className="col-6 col-md-2 col-lg-1">
                   <label
                     className="form-label small fw-semibold mb-1"
-                    style={{ 
+                    style={{
                       color: "var(--text-muted)",
-                      whiteSpace: "nowrap"
+                      whiteSpace: "nowrap",
                     }}
                   >
                     Items per page
@@ -931,7 +1071,7 @@ const CashBank = () => {
                       borderColor: "var(--input-border)",
                       color: "var(--input-text)",
                       fontSize: "0.75rem",
-                      padding: "0.25rem 0.5rem"
+                      padding: "0.25rem 0.5rem",
                     }}
                   >
                     <option value="5">5</option>
@@ -951,7 +1091,9 @@ const CashBank = () => {
                     className="btn btn-sm btn-outline-secondary w-100 w-md-auto"
                     type="button"
                     onClick={clearFilters}
-                    disabled={loading || isActionDisabled() || !hasActiveFilters}
+                    disabled={
+                      loading || isActionDisabled() || !hasActiveFilters
+                    }
                     style={{
                       fontSize: "0.875rem",
                       whiteSpace: "nowrap",
@@ -962,126 +1104,198 @@ const CashBank = () => {
                     Clear Filters
                   </button>
                 </div>
+              </div>
             </div>
           </div>
-      </div>
 
-          {/* Account Summary Cards - Show when "All Accounts" is selected */}
-          {(!selectedAccount || selectedAccount === "") && accounts.length > 0 ? (
+          {/* Overview - Show when "All Accounts" is selected */}
+          {(!selectedAccount || selectedAccount === "") && accounts.length > 0 && (
             <div
-              className="card border-0 shadow-sm"
-              style={{ backgroundColor: "var(--background-white)" }}
+              className="card border-0 shadow-sm mb-4"
+              style={{
+                backgroundColor: "var(--background-white)",
+                borderLeft: "4px solid var(--primary-color)",
+              }}
             >
               <div
-                className="card-header border-bottom-0 py-2"
+                className="card-header py-3"
                 style={{
-                  background: "var(--topbar-bg)",
-                  color: "var(--topbar-text)",
+                  backgroundColor: "#f8f9fa",
+                  borderBottom: "1px solid #dee2e6",
                 }}
               >
-                <div className="d-flex justify-content-between align-items-center">
-                  <h5 className="card-title mb-0 fw-semibold text-white">
-                    <i className="fas fa-money-bill-wave me-2"></i>
-                    All Cash & Bank Accounts
-                    {!loading && (
-                      <small className="opacity-75 ms-2 text-white">
-                        ({accounts.length} accounts)
-                      </small>
-                    )}
-                  </h5>
-                </div>
+                <h5 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2" style={{ color: "var(--text-primary)" }}>
+                  <FaChartBar style={{ color: "var(--primary-color)" }} />
+                  Cash & Bank
+                </h5>
+                <p className="mb-0 small mt-1" style={{ color: "var(--text-muted)" }}>
+                  Overview across all cash accounts • Based on selected date range
+                </p>
               </div>
               <div className="card-body">
-                <div className="row g-3">
-                  {accounts.map((account) => (
-                    <div key={account.id} className="col-12 col-md-6 col-lg-4">
+                {/* KPI Row - responsive layout, click to view full amount */}
+                <div className="row g-3 mb-4">
+                  <div className="col-12 col-sm-6 col-lg-3">
+                    <div className="border rounded p-3 h-100" style={{ backgroundColor: "#fff", borderColor: "#e9ecef", minWidth: 0 }}>
+                      <div className="small text-uppercase fw-semibold mb-1" style={{ color: "var(--text-muted)" }}>Total Cash Position</div>
                       <div
-                        className="card h-100 shadow-sm border"
+                        className="fw-bold d-inline-block text-truncate w-100"
                         style={{
+                          fontSize: "clamp(1rem, 2.5vw, 1.25rem)",
+                          color: "var(--primary-color)",
                           cursor: "pointer",
-                          transition: "all 0.2s ease-in-out",
-                          borderColor: "var(--input-border) !important",
+                          maxWidth: "100%",
                         }}
-                        onClick={() => setSelectedAccount(account.id)}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = "translateY(-2px)";
-                          e.currentTarget.style.boxShadow =
-                            "0 4px 12px rgba(0,0,0,0.15)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = "translateY(0)";
-                          e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.1)";
-                        }}
+                        title={formatCurrency(analyticsData.totalCashPosition)}
+                        onClick={() => handleNumberClick("Total Cash Position", analyticsData.totalCashPosition, true)}
                       >
-                        <div className="card-body">
-                          <div className="d-flex justify-content-between align-items-start mb-2">
-                            <div>
-                              <h6
-                                className="text-muted mb-1 small fw-semibold"
-                                style={{ fontSize: "0.75rem" }}
-                              >
-                                {account.account_code}
-                              </h6>
-                              <h5
-                                className="mb-2 fw-bold"
-                                style={{
-                                  color: "var(--text-primary)",
-                                  fontSize: "1rem",
-                                }}
-                              >
-                                {account.account_name}
-                              </h5>
-                            </div>
-                            <i
-                              className="fas fa-money-bill-wave"
-                              style={{
-                                color: "var(--primary-light)",
-                                opacity: 0.7,
-                                fontSize: "1.5rem",
-                              }}
-                            ></i>
-                          </div>
-                          <div className="mb-2">
-                            <div
-                              className="h4 mb-0 fw-bold"
-                              style={{
-                                color:
-                                  account.current_balance >= 0
-                                    ? "var(--success-color)"
-                                    : "var(--danger-color)",
-                              }}
-                            >
-                              {formatCurrency(account.current_balance)}
-                            </div>
-                            <small className="text-muted">
-                              Current Balance
-                            </small>
-                          </div>
-                          <div className="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
-                            <small className="text-muted">
-                              <i className="fas fa-list me-1"></i>
-                              {account.transactions?.length || 0} transactions
-                            </small>
-                            <button
-                              className="btn btn-sm btn-outline-primary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedAccount(account.id);
-                              }}
-                              style={{ fontSize: "0.75rem" }}
-                            >
-                              View Details
-                              <i className="fas fa-chevron-right ms-1"></i>
-                            </button>
-                          </div>
-                        </div>
+                        {formatCurrency(analyticsData.totalCashPosition)}
+                      </div>
+                      <div className="text-xxs mt-1" style={{ color: "var(--text-muted)", fontSize: "0.65rem", fontStyle: "italic" }}>
+                        <i className="fas fa-info-circle me-1"></i>
+                        Click to view full number
                       </div>
                     </div>
-                  ))}
+                  </div>
+                  <div className="col-12 col-sm-6 col-lg-3">
+                    <div className="border rounded p-3 h-100" style={{ backgroundColor: "#fff", borderColor: "#e9ecef", minWidth: 0 }}>
+                      <div className="small text-uppercase fw-semibold mb-1" style={{ color: "var(--text-muted)" }}>Total Inflows</div>
+                      <div
+                        className="fw-bold text-success d-inline-block text-truncate w-100"
+                        style={{
+                          fontSize: "clamp(1rem, 2.5vw, 1.25rem)",
+                          cursor: "pointer",
+                          maxWidth: "100%",
+                        }}
+                        title={formatCurrency(analyticsData.debitCreditSummary[0]?.value ?? 0)}
+                        onClick={() => handleNumberClick("Total Inflows (Credit)", analyticsData.debitCreditSummary[0]?.value ?? 0, true)}
+                      >
+                        {formatCurrency(analyticsData.debitCreditSummary[0]?.value ?? 0)}
+                      </div>
+                      <div className="text-xxs mt-1" style={{ color: "var(--text-muted)", fontSize: "0.65rem", fontStyle: "italic" }}>
+                        <i className="fas fa-info-circle me-1"></i>
+                        Click to view full number
+                      </div>
+                    </div>
+                  </div>
+                  <div className="col-12 col-sm-6 col-lg-3">
+                    <div className="border rounded p-3 h-100" style={{ backgroundColor: "#fff", borderColor: "#e9ecef", minWidth: 0 }}>
+                      <div className="small text-uppercase fw-semibold mb-1" style={{ color: "var(--text-muted)" }}>Total Outflows</div>
+                      <div
+                        className="fw-bold text-danger d-inline-block text-truncate w-100"
+                        style={{
+                          fontSize: "clamp(1rem, 2.5vw, 1.25rem)",
+                          cursor: "pointer",
+                          maxWidth: "100%",
+                        }}
+                        title={formatCurrency(analyticsData.debitCreditSummary[1]?.value ?? 0)}
+                        onClick={() => handleNumberClick("Total Outflows (Debit)", analyticsData.debitCreditSummary[1]?.value ?? 0, true)}
+                      >
+                        {formatCurrency(analyticsData.debitCreditSummary[1]?.value ?? 0)}
+                      </div>
+                      <div className="text-xxs mt-1" style={{ color: "var(--text-muted)", fontSize: "0.65rem", fontStyle: "italic" }}>
+                        <i className="fas fa-info-circle me-1"></i>
+                        Click to view full number
+                      </div>
+                    </div>
+                  </div>
+                  <div className="col-12 col-sm-6 col-lg-3">
+                    <div className="border rounded p-3 h-100" style={{ backgroundColor: "#fff", borderColor: "#e9ecef", minWidth: 0 }}>
+                      <div className="small text-uppercase fw-semibold mb-1" style={{ color: "var(--text-muted)" }}>Accounts</div>
+                      <div
+                        className="fw-bold d-inline-block text-truncate w-100"
+                        style={{ fontSize: "clamp(1rem, 2.5vw, 1.25rem)", color: "var(--text-primary)", cursor: "pointer", maxWidth: "100%" }}
+                        title={`${accounts.length} accounts`}
+                        onClick={() => handleNumberClick("Number of Accounts", accounts.length, false)}
+                      >
+                        {accounts.length}
+                      </div>
+                      <div className="small text-muted">Cash in Bank, Hand, Petty</div>
+                    </div>
+                  </div>
+                </div>
+                {/* Charts Row */}
+                <div className="row g-4">
+                  <div className="col-12 col-lg-8">
+                    <div className="border rounded p-3 h-100" style={{ backgroundColor: "#fff", borderColor: "#e9ecef", minHeight: "280px" }}>
+                      <div className="small fw-semibold mb-3" style={{ color: "var(--text-primary)" }}>
+                        <FaChartBar className="me-2" style={{ color: "var(--primary-color)" }} />
+                        Balance by Account
+                      </div>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={analyticsData.balanceByAccount} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e9ecef" />
+                          <XAxis dataKey="shortName" tick={{ fontSize: 11 }} stroke="#6c757d" />
+                          <YAxis tick={{ fontSize: 11 }} stroke="#6c757d" tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`} />
+                          <Tooltip formatter={(v) => [formatCurrency(v), "Balance"]} labelFormatter={(l) => l} />
+                          <Bar dataKey="balance" name="Balance" fill="var(--primary-color)" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <div className="col-12 col-lg-4">
+                    <div className="border rounded p-3 h-100 cash-bank-pie-wrapper" style={{ backgroundColor: "#fff", borderColor: "#e9ecef", minHeight: "280px", overflow: "visible" }}>
+                      <div className="small fw-semibold mb-3" style={{ color: "var(--text-primary)" }}>
+                        <FaChartPie className="me-2" style={{ color: "var(--primary-color)" }} />
+                        Balance Distribution
+                      </div>
+                      <div className="cash-bank-pie-chart" style={{ width: "100%", height: "clamp(220px, 40vw, 260px)", overflow: "visible" }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart margin={{ top: 12, right: 12, bottom: 12, left: 12 }}>
+                            <Pie
+                              data={analyticsData.distributionPie}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius="75%"
+                              label={({ chartLabel, name, percent }) =>
+                                percent > 0.05 ? `${chartLabel || name} ${(percent * 100).toFixed(0)}%` : ""
+                              }
+                              labelLine={{ strokeWidth: 1 }}
+                            >
+                              {analyticsData.distributionPie.map((entry, i) => (
+                                <Cell key={i} fill={entry.fill || ["#0d6efd", "#198754", "#fd7e14", "#6f42c1"][i % 4]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(v) => formatCurrency(v)} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="row g-4 mt-2">
+                  <div className="col-12">
+                    <div className="border rounded p-3" style={{ backgroundColor: "#fff", borderColor: "#e9ecef" }}>
+                      <div className="small fw-semibold mb-3" style={{ color: "var(--text-primary)" }}>
+                        Inflows vs Outflows
+                      </div>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart
+                          data={analyticsData.debitCreditSummary}
+                          layout="vertical"
+                          margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e9ecef" />
+                          <XAxis type="number" tick={{ fontSize: 11 }} stroke="#6c757d" tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`} />
+                          <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} stroke="#6c757d" width={120} />
+                          <Tooltip formatter={(v) => [formatCurrency(v), "Amount"]} />
+                          <Bar dataKey="value" name="Amount" radius={[0, 4, 4, 0]}>
+                            {analyticsData.debitCreditSummary.map((entry, i) => (
+                              <Cell key={i} fill={entry.fill} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          ) : selectedAccount && currentAccount ? (
+          )}
+
+          {selectedAccount && currentAccount ? (
             <div
               className="card border-0 shadow-sm"
               style={{ backgroundColor: "var(--background-white)" }}
@@ -1096,7 +1310,8 @@ const CashBank = () => {
                 <div className="d-flex justify-content-between align-items-center">
                   <h5 className="card-title mb-0 fw-semibold text-white">
                     <i className="fas fa-money-bill-wave me-2"></i>
-                    {currentAccount.account_code} - {currentAccount.account_name}
+                    {currentAccount.account_code} -{" "}
+                    {currentAccount.account_name}
                     {!loading && (
                       <small className="opacity-75 ms-2 text-white">
                         ({paginationMeta.total} transactions)
@@ -1106,7 +1321,7 @@ const CashBank = () => {
                 </div>
               </div>
 
-          <div className="card-body p-0">
+              <div className="card-body p-0">
                 {filteredTransactions.length === 0 ? (
                   <div className="text-center py-5">
                     <div className="mb-3">
@@ -1128,20 +1343,20 @@ const CashBank = () => {
                     </p>
                   </div>
                 ) : (
-            <div className="table-responsive">
+                  <div className="table-responsive cash-bank-table-wrap">
                     <table className="table table-striped table-hover mb-0">
                       <thead
                         style={{ backgroundColor: "var(--background-light)" }}
                       >
                         <tr>
                           <th
-                            className="text-center small fw-semibold"
+                            className="text-center small fw-semibold je-col-index"
                             style={{ width: "4%" }}
                           >
                             #
                           </th>
                           <th
-                            className="text-center small fw-semibold"
+                            className="text-center small fw-semibold je-col-actions"
                             style={{ width: "10%" }}
                           >
                             Actions
@@ -1157,9 +1372,7 @@ const CashBank = () => {
                               style={{ color: "inherit" }}
                             >
                               Date
-                              <i
-                                className={`ms-1 ${getSortIcon("date")}`}
-                              ></i>
+                              <i className={`ms-1 ${getSortIcon("date")}`}></i>
                             </button>
                           </th>
                           <th
@@ -1174,7 +1387,9 @@ const CashBank = () => {
                             >
                               Entry Number
                               <i
-                                className={`ms-1 ${getSortIcon("entry_number")}`}
+                                className={`ms-1 ${getSortIcon(
+                                  "entry_number"
+                                )}`}
                               ></i>
                             </button>
                           </th>
@@ -1221,9 +1436,7 @@ const CashBank = () => {
                               style={{ color: "inherit" }}
                             >
                               Debit
-                              <i
-                                className={`ms-1 ${getSortIcon("debit")}`}
-                              ></i>
+                              <i className={`ms-1 ${getSortIcon("debit")}`}></i>
                             </button>
                           </th>
                           <th
@@ -1248,22 +1461,24 @@ const CashBank = () => {
                           >
                             Balance
                           </th>
-                  </tr>
-                </thead>
-                <tbody>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {currentTransactions.map((transaction, index) => (
                           <tr key={index} className="align-middle">
                             <td
-                              className="text-center fw-bold"
+                              className="text-center fw-bold je-col-index"
                               style={{ color: "var(--text-primary)" }}
                             >
                               {startIndex + index + 1}
                             </td>
-                            <td className="text-center">
+                            <td className="text-center je-col-actions">
                               <div className="d-flex justify-content-center gap-1">
                                 <button
                                   className="btn btn-info btn-sm text-white"
-                                  onClick={() => setViewingTransaction(transaction)}
+                                  onClick={() =>
+                                    setViewingTransaction(transaction)
+                                  }
                                   disabled={isActionDisabled()}
                                   title="View Details"
                                   style={{
@@ -1296,7 +1511,9 @@ const CashBank = () => {
                             <td className="text-muted small">
                               {formatDate(transaction.date)}
                             </td>
-                            <td style={{ maxWidth: "150px", overflow: "hidden" }}>
+                            <td
+                              style={{ maxWidth: "150px", overflow: "hidden" }}
+                            >
                               <div
                                 className="fw-medium"
                                 style={{
@@ -1307,10 +1524,12 @@ const CashBank = () => {
                                 }}
                                 title={transaction.entry_number}
                               >
-                          <code>{transaction.entry_number}</code>
+                                <code>{transaction.entry_number}</code>
                               </div>
-                        </td>
-                            <td style={{ maxWidth: "300px", overflow: "hidden" }}>
+                            </td>
+                            <td
+                              style={{ maxWidth: "300px", overflow: "hidden" }}
+                            >
                               <div
                                 className="small"
                                 style={{
@@ -1323,8 +1542,10 @@ const CashBank = () => {
                               >
                                 {transaction.description}
                               </div>
-                        </td>
-                            <td style={{ maxWidth: "150px", overflow: "hidden" }}>
+                            </td>
+                            <td
+                              style={{ maxWidth: "150px", overflow: "hidden" }}
+                            >
                               <div
                                 className="small text-muted"
                                 style={{
@@ -1336,16 +1557,50 @@ const CashBank = () => {
                               >
                                 {transaction.reference || "—"}
                               </div>
-                        </td>
+                            </td>
                             <td className="text-end text-danger fw-semibold">
-                              {transaction.debit > 0
-                                ? formatCurrency(transaction.debit)
-                                : "-"}
+                              <span
+                                className="d-inline-block text-truncate"
+                                style={{ maxWidth: "140px", cursor: "pointer" }}
+                                title={
+                                  transaction.debit > 0
+                                    ? formatCurrency(transaction.debit)
+                                    : "—"
+                                }
+                                onClick={() =>
+                                  handleNumberClick(
+                                    "Debit",
+                                    transaction.debit ?? 0,
+                                    true
+                                  )
+                                }
+                              >
+                                {transaction.debit > 0
+                                  ? formatCurrency(transaction.debit)
+                                  : "—"}
+                              </span>
                             </td>
                             <td className="text-end text-success fw-semibold">
-                              {transaction.credit > 0
-                                ? formatCurrency(transaction.credit)
-                                : "-"}
+                              <span
+                                className="d-inline-block text-truncate"
+                                style={{ maxWidth: "140px", cursor: "pointer" }}
+                                title={
+                                  transaction.credit > 0
+                                    ? formatCurrency(transaction.credit)
+                                    : "—"
+                                }
+                                onClick={() =>
+                                  handleNumberClick(
+                                    "Credit",
+                                    transaction.credit ?? 0,
+                                    true
+                                  )
+                                }
+                              >
+                                {transaction.credit > 0
+                                  ? formatCurrency(transaction.credit)
+                                  : "—"}
+                              </span>
                             </td>
                             <td
                               className={`text-end fw-bold ${
@@ -1354,28 +1609,73 @@ const CashBank = () => {
                                   : "text-danger"
                               }`}
                             >
-                          {formatCurrency(transaction.balance)}
-                        </td>
-                      </tr>
+                              <span
+                                className="d-inline-block text-truncate"
+                                style={{ maxWidth: "140px", cursor: "pointer" }}
+                                title={formatCurrency(transaction.balance)}
+                                onClick={() =>
+                                  handleNumberClick(
+                                    "Balance",
+                                    transaction.balance,
+                                    true
+                                  )
+                                }
+                              >
+                                {formatCurrency(transaction.balance)}
+                              </span>
+                            </td>
+                          </tr>
                         ))}
-                </tbody>
+                      </tbody>
                       {filteredTransactions.length > 0 && (
-                  <tfoot className="table-light">
-                    <tr>
+                        <tfoot className="table-light">
+                          <tr>
                             <td colSpan="6">
                               <strong>Totals:</strong>
-                      </td>
-                      <td className="text-end">
-                        <strong className="text-danger">
-                                {formatCurrency(stats.totalDebit)}
-                        </strong>
-                      </td>
-                      <td className="text-end">
-                        <strong className="text-success">
-                                {formatCurrency(stats.totalCredit)}
-                        </strong>
-                      </td>
-                      <td className="text-end">
+                            </td>
+                            <td className="text-end">
+                              <strong className="text-danger">
+                                <span
+                                  className="d-inline-block text-truncate"
+                                  style={{
+                                    maxWidth: "140px",
+                                    cursor: "pointer",
+                                  }}
+                                  title={formatCurrency(stats.totalDebit)}
+                                  onClick={() =>
+                                    handleNumberClick(
+                                      "Total Debit",
+                                      stats.totalDebit,
+                                      true
+                                    )
+                                  }
+                                >
+                                  {formatCurrency(stats.totalDebit)}
+                                </span>
+                              </strong>
+                            </td>
+                            <td className="text-end">
+                              <strong className="text-success">
+                                <span
+                                  className="d-inline-block text-truncate"
+                                  style={{
+                                    maxWidth: "140px",
+                                    cursor: "pointer",
+                                  }}
+                                  title={formatCurrency(stats.totalCredit)}
+                                  onClick={() =>
+                                    handleNumberClick(
+                                      "Total Credit",
+                                      stats.totalCredit,
+                                      true
+                                    )
+                                  }
+                                >
+                                  {formatCurrency(stats.totalCredit)}
+                                </span>
+                              </strong>
+                            </td>
+                            <td className="text-end">
                               <strong
                                 className={
                                   stats.currentBalance >= 0
@@ -1383,16 +1683,32 @@ const CashBank = () => {
                                     : "text-danger"
                                 }
                               >
-                                {formatCurrency(stats.currentBalance)}
-                        </strong>
-                      </td>
-                    </tr>
-                  </tfoot>
+                                <span
+                                  className="d-inline-block text-truncate"
+                                  style={{
+                                    maxWidth: "140px",
+                                    cursor: "pointer",
+                                  }}
+                                  title={formatCurrency(stats.currentBalance)}
+                                  onClick={() =>
+                                    handleNumberClick(
+                                      "Current Balance",
+                                      stats.currentBalance,
+                                      true
+                                    )
+                                  }
+                                >
+                                  {formatCurrency(stats.currentBalance)}
+                                </span>
+                              </strong>
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
                 )}
-              </table>
-            </div>
-                )}
-          </div>
+              </div>
 
               {!loading && filteredTransactions.length > 0 && (
                 <div className="card-footer bg-white border-top px-3 py-2">
@@ -1429,7 +1745,8 @@ const CashBank = () => {
                           setCurrentPage((prev) => Math.max(prev - 1, 1))
                         }
                         disabled={
-                          paginationMeta.current_page === 1 || isActionDisabled()
+                          paginationMeta.current_page === 1 ||
+                          isActionDisabled()
                         }
                         style={{
                           transition: "all 0.2s ease-in-out",
@@ -1442,7 +1759,8 @@ const CashBank = () => {
                             e.target.style.transform = "translateY(-1px)";
                             e.target.style.boxShadow =
                               "0 2px 4px rgba(0,0,0,0.1)";
-                            e.target.style.backgroundColor = "var(--primary-color)";
+                            e.target.style.backgroundColor =
+                              "var(--primary-color)";
                             e.target.style.color = "white";
                           }
                         }}
@@ -1540,7 +1858,7 @@ const CashBank = () => {
                                     "0 2px 4px rgba(0,0,0,0.1)";
                                   e.target.style.backgroundColor =
                                     "var(--primary-light)";
-                                  e.target.style.color = "var(--text-primary)";
+                                  e.target.style.color = "white";
                                 }
                               }}
                               onMouseLeave={(e) => {
@@ -1591,7 +1909,8 @@ const CashBank = () => {
                             e.target.style.transform = "translateY(-1px)";
                             e.target.style.boxShadow =
                               "0 2px 4px rgba(0,0,0,0.1)";
-                            e.target.style.backgroundColor = "var(--primary-color)";
+                            e.target.style.backgroundColor =
+                              "var(--primary-color)";
                             e.target.style.color = "white";
                           }
                         }}
@@ -1609,48 +1928,55 @@ const CashBank = () => {
                   </div>
                 </div>
               )}
-        </div>
-      ) : accounts.length === 0 ? (
-        <div
-          className="card border-0 shadow-sm"
-          style={{ backgroundColor: "var(--background-white)" }}
-        >
-          <div className="card-body text-center py-5">
-            <div className="mb-3">
-              <i
-                className="fas fa-money-bill-wave fa-3x"
-                style={{ color: "var(--text-muted)", opacity: 0.5 }}
-              ></i>
             </div>
-            <h5 className="mb-2" style={{ color: "var(--text-muted)" }}>
-              No Accounts Found
-            </h5>
-            <p className="mb-0 small" style={{ color: "var(--text-muted)" }}>
-              No cash or bank accounts are available.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div
-          className="card border-0 shadow-sm"
-          style={{ backgroundColor: "var(--background-white)" }}
-        >
-          <div className="card-body text-center py-5">
-            <div className="mb-3">
-              <i
-                className="fas fa-money-bill-wave fa-3x"
-                style={{ color: "var(--text-muted)", opacity: 0.5 }}
-              ></i>
+          ) : accounts.length === 0 ? (
+            <div
+              className="card border-0 shadow-sm"
+              style={{ backgroundColor: "var(--background-white)" }}
+            >
+              <div className="card-body text-center py-5">
+                <div className="mb-3">
+                  <i
+                    className="fas fa-money-bill-wave fa-3x"
+                    style={{ color: "var(--text-muted)", opacity: 0.5 }}
+                  ></i>
+                </div>
+                <h5 className="mb-2" style={{ color: "var(--text-muted)" }}>
+                  No Accounts Found
+                </h5>
+                <p
+                  className="mb-0 small"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  No cash or bank accounts are available.
+                </p>
+              </div>
             </div>
-            <h5 className="mb-2" style={{ color: "var(--text-muted)" }}>
-              Account Not Found
-            </h5>
-            <p className="mb-0 small" style={{ color: "var(--text-muted)" }}>
-              The selected account could not be found. Please select a different account.
-            </p>
-          </div>
-        </div>
-      )}
+          ) : selectedAccount ? (
+            <div
+              className="card border-0 shadow-sm"
+              style={{ backgroundColor: "var(--background-white)" }}
+            >
+              <div className="card-body text-center py-5">
+                <div className="mb-3">
+                  <i
+                    className="fas fa-money-bill-wave fa-3x"
+                    style={{ color: "var(--text-muted)", opacity: 0.5 }}
+                  ></i>
+                </div>
+                <h5 className="mb-2" style={{ color: "var(--text-muted)" }}>
+                  Account Not Found
+                </h5>
+                <p
+                  className="mb-0 small"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  The selected account could not be found. Please select a
+                  different account.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {/* View Transaction Modal */}
           {viewingTransaction && currentAccount && (
@@ -1702,14 +2028,7 @@ const NumberViewModal = ({ title, value, onClose }) => {
 
   useEffect(() => {
     document.addEventListener("keydown", handleEscapeKey);
-    document.body.classList.add("modal-open");
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", handleEscapeKey);
-      document.body.classList.remove("modal-open");
-      document.body.style.overflow = "auto";
-    };
+    return () => document.removeEventListener("keydown", handleEscapeKey);
   }, []);
 
   const handleCopy = () => {

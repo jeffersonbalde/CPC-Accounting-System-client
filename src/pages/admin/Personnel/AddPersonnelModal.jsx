@@ -13,7 +13,93 @@ const DEFAULT_FORM = {
   password: "",
   password_confirmation: "",
   is_active: true,
+  // All permissions selected by default when creating new personnel
+  sidebar_access: [
+    "dashboard",
+    "journal_entries",
+    "cash_bank",
+    "clients_ar",
+    "suppliers_ap",
+    "income",
+    "expenses",
+    "reports",
+  ],
 };
+
+/** Navigation & permissions options for personnel (keys must match Sidebar personnelMenuItems) */
+const PERSONNEL_ACCESS_OPTIONS = [
+  {
+    section: "Core",
+    description: "Primary navigation and overview",
+    items: [
+      { key: "dashboard", label: "Dashboard", icon: "fas fa-tachometer-alt" },
+    ],
+  },
+  {
+    section: "Transactions",
+    description: "Journal entries and cash & bank",
+    items: [
+      {
+        key: "journal_entries",
+        label: "Journal Entries",
+        icon: "fas fa-file-invoice",
+      },
+      {
+        key: "cash_bank",
+        label: "Cash & Bank",
+        icon: "fas fa-money-bill-wave",
+      },
+    ],
+  },
+  {
+    section: "Receivables & Payables",
+    description: "Clients, suppliers, invoices, and bills",
+    items: [
+      {
+        key: "clients_ar",
+        label: "Clients / AR",
+        icon: "fas fa-user-tie",
+      },
+      {
+        key: "suppliers_ap",
+        label: "Suppliers / AP",
+        icon: "fas fa-truck",
+      },
+    ],
+  },
+  {
+    section: "Income & Expenses",
+    description: "Income, revenue, and expense tracking",
+    items: [
+      {
+        key: "income",
+        label: "Income / Revenue",
+        icon: "fas fa-arrow-up",
+      },
+      {
+        key: "expenses",
+        label: "Expenses",
+        icon: "fas fa-arrow-down",
+      },
+    ],
+  },
+  {
+    section: "Reports",
+    description: "Financial reports",
+    items: [
+      {
+        key: "reports",
+        label: "Financial Reports",
+        icon: "fas fa-chart-line",
+      },
+    ],
+  },
+];
+
+/** Valid keys for API (used when building payload and normalizing legacy data) */
+const VALID_SIDEBAR_KEYS = PERSONNEL_ACCESS_OPTIONS.flatMap((g) =>
+  g.items.map((i) => i.key)
+);
 
 const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
   const { token } = useAuth();
@@ -196,8 +282,18 @@ const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
   }, [fetchExistingPersonnel]);
 
   const computeHasChanges = (currentForm, file, removed) => {
+    const initial = initialStateRef.current;
+    const accessEqual =
+      Array.isArray(currentForm.sidebar_access) &&
+      Array.isArray(initial.sidebar_access) &&
+      currentForm.sidebar_access.length === initial.sidebar_access.length &&
+      currentForm.sidebar_access.every((k) =>
+        initial.sidebar_access.includes(k)
+      );
     return (
-      JSON.stringify(currentForm) !== JSON.stringify(initialStateRef.current) ||
+      JSON.stringify({ ...currentForm, sidebar_access: null }) !==
+        JSON.stringify({ ...initial, sidebar_access: null }) ||
+      !accessEqual ||
       currentForm.password ||
       currentForm.password_confirmation ||
       file !== null ||
@@ -244,6 +340,14 @@ const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
         (personnel.name ? personnel.name.split(" ").slice(1).join(" ") : "") ||
         "";
 
+      let access = Array.isArray(personnel.sidebar_access)
+        ? personnel.sidebar_access
+        : ["dashboard", "journal_entries", "clients_ar", "reports"];
+      // Normalize legacy key 'invoices' -> 'clients_ar' so form shows correct checkboxes
+      access = access.map((k) => (k === "invoices" ? "clients_ar" : k));
+      access = [...new Set(access)].filter((k) =>
+        VALID_SIDEBAR_KEYS.includes(k)
+      );
       const personnelFormState = {
         username: personnel.username || "",
         first_name: firstName,
@@ -252,6 +356,7 @@ const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
         password: "",
         password_confirmation: "",
         is_active: personnel.is_active !== false, // Default to true if not explicitly false
+        sidebar_access: access,
       };
       setFormData(personnelFormState);
       setAvatarFile(null);
@@ -487,10 +592,33 @@ const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
     return { isValid: true, errors: {} };
   };
 
+  const sidebarAccessForPayload = () =>
+    Array.isArray(formData.sidebar_access)
+      ? formData.sidebar_access.filter((k) => VALID_SIDEBAR_KEYS.includes(k))
+      : [];
+
+  /** JSON body for update when no file upload – ensures backend receives is_active and sidebar_access */
+  const buildUpdateJsonPayload = () => {
+    const payload = {
+      username: formData.username,
+      first_name: formData.first_name.trim(),
+      last_name: formData.last_name.trim(),
+      phone: formData.phone ? formData.phone.replace(/\D/g, "") : "",
+      is_active: !!formData.is_active,
+      sidebar_access: sidebarAccessForPayload(),
+    };
+    if (formData.password && formData.password.trim()) {
+      payload.password = formData.password;
+      payload.password_confirmation =
+        formData.password_confirmation || formData.password;
+    }
+    if (avatarRemoved && !avatarFile) payload.remove_avatar = true;
+    return payload;
+  };
+
   const buildFormPayload = () => {
     const payload = new FormData();
 
-    // Send first_name and last_name separately
     payload.append("first_name", formData.first_name.trim());
     payload.append("last_name", formData.last_name.trim());
     payload.append("username", formData.username);
@@ -500,8 +628,9 @@ const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
       payload.append("phone", phoneDigits);
     }
 
-    // Add is_active status
     payload.append("is_active", formData.is_active ? "1" : "0");
+    const sidebarAccess = sidebarAccessForPayload();
+    payload.append("sidebar_access", JSON.stringify(sidebarAccess));
 
     if (formData.password && formData.password.trim()) {
       payload.append("password", formData.password);
@@ -510,15 +639,9 @@ const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
       }
     }
 
-    if (avatarFile) {
-      payload.append("avatar", avatarFile);
-    }
-    if (avatarRemoved && !avatarFile) {
-      payload.append("remove_avatar", "1");
-    }
-    if (isEdit) {
-      payload.append("_method", "PUT");
-    }
+    if (avatarFile) payload.append("avatar", avatarFile);
+    if (avatarRemoved && !avatarFile) payload.append("remove_avatar", "1");
+    if (isEdit) payload.append("_method", "PATCH");
     return payload;
   };
 
@@ -601,24 +724,39 @@ const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
         "Please wait while we save the personnel information..."
       );
 
-      // Ensure API base URL ends with /api
+      // Use same API base as auth (login/user) so updates hit the same backend
       const apiBase =
         (
-          import.meta.env.VITE_LARAVEL_API || "http://localhost:8000/api"
+          import.meta.env.VITE_API_URL ||
+          import.meta.env.VITE_LARAVEL_API ||
+          "http://localhost:8000/api"
         ).replace(/\/api\/?$/, "") + "/api";
 
       const url = isEdit
         ? `${apiBase}/admin/personnel/${personnel.id}`
         : `${apiBase}/admin/personnel`;
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-        body: buildFormPayload(),
-      });
+      let response;
+      if (isEdit && !avatarFile && !avatarRemoved) {
+        response = await fetch(url, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(buildUpdateJsonPayload()),
+        });
+      } else {
+        response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+          body: buildFormPayload(),
+        });
+      }
 
       const data = await response.json();
       showAlert.close();
@@ -637,14 +775,26 @@ const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
 
         const refreshedAvatar = resolveAvatarUrl(data.personnel || data);
         const fullName = `${formData.first_name} ${formData.last_name}`.trim();
+        const saved = data.personnel || data;
         const normalizedPersonnel = {
-          username: (data.personnel || data).username || "",
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          phone: formData.phone || "",
+          username: saved.username || "",
+          first_name: saved.first_name ?? formData.first_name,
+          last_name: saved.last_name ?? formData.last_name,
+          phone: saved.phone ?? formData.phone ?? "",
           password: "",
           password_confirmation: "",
-          is_active: formData.is_active,
+          is_active:
+            saved.is_active !== undefined
+              ? saved.is_active
+              : formData.is_active,
+          sidebar_access: Array.isArray(saved.sidebar_access)
+            ? saved.sidebar_access
+            : formData.sidebar_access || [
+                "dashboard",
+                "journal_entries",
+                "clients_ar",
+                "reports",
+              ],
         };
         initialStateRef.current = normalizedPersonnel;
         setFormData(normalizedPersonnel);
@@ -1011,6 +1161,173 @@ const AddPersonnelModal = ({ personnel, onClose, onSave }) => {
                                   ? "This personnel account is active and can access the system."
                                   : "This personnel account is inactive and cannot access the system."}
                               </small>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="col-12">
+                          <div
+                            className="card border-0 shadow-sm"
+                            style={{
+                              borderLeft: "4px solid #0E254B",
+                              backgroundColor: "#fafbfc",
+                            }}
+                          >
+                            <div
+                              className="card-header py-3 border-0 d-flex align-items-center"
+                              style={{
+                                backgroundColor: "rgba(14, 37, 75, 0.06)",
+                              }}
+                            >
+                              <i
+                                className="fas fa-shield-alt me-2"
+                                style={{ color: "#0E254B", fontSize: "1.1rem" }}
+                              />
+                              <h6
+                                className="mb-0 fw-semibold"
+                                style={{ color: "#0E254B" }}
+                              >
+                                Navigation &amp; Permissions
+                              </h6>
+                            </div>
+                            <div className="card-body pt-3 pb-4">
+                              <p className="text-muted small mb-3">
+                                Choose which menu sections and functions this
+                                personnel can see and use. Only selected items
+                                will appear in their sidebar.
+                              </p>
+                              {PERSONNEL_ACCESS_OPTIONS.map((group) => {
+                                const selectedInGroup = (
+                                  formData.sidebar_access || []
+                                ).filter((k) =>
+                                  group.items.some((it) => it.key === k)
+                                ).length;
+                                const allSelected =
+                                  selectedInGroup === group.items.length;
+                                return (
+                                  <div
+                                    key={group.section}
+                                    className="mb-4 pb-3 border-bottom border-light"
+                                    style={{
+                                      borderBottomColor:
+                                        "rgba(0,0,0,0.06) !important",
+                                    }}
+                                  >
+                                    <div className="d-flex align-items-center justify-content-between mb-2">
+                                      <span className="fw-semibold text-dark small text-uppercase tracking-wide">
+                                        {group.section}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="btn btn-link btn-sm p-0 text-decoration-none"
+                                        style={{
+                                          fontSize: "0.8rem",
+                                          color: "#0E254B",
+                                        }}
+                                        onClick={() => {
+                                          setFormData((prev) => {
+                                            const next = { ...prev };
+                                            const current =
+                                              next.sidebar_access || [];
+                                            const keys = group.items.map(
+                                              (it) => it.key
+                                            );
+                                            const nextAccess = allSelected
+                                              ? current.filter(
+                                                  (k) => !keys.includes(k)
+                                                )
+                                              : [
+                                                  ...new Set([
+                                                    ...current,
+                                                    ...keys,
+                                                  ]),
+                                                ];
+                                            next.sidebar_access = nextAccess;
+                                            setHasUnsavedChanges(
+                                              computeHasChanges(
+                                                next,
+                                                avatarFile,
+                                                avatarRemoved
+                                              )
+                                            );
+                                            return next;
+                                          });
+                                        }}
+                                        disabled={loading}
+                                      >
+                                        {allSelected
+                                          ? "Deselect all"
+                                          : "Select all"}
+                                      </button>
+                                    </div>
+                                    <p
+                                      className="text-muted small mb-2"
+                                      style={{ fontSize: "0.8rem" }}
+                                    >
+                                      {group.description}
+                                    </p>
+                                    <div className="d-flex flex-wrap gap-3">
+                                      {group.items.map((item) => {
+                                        const checked = (
+                                          formData.sidebar_access || []
+                                        ).includes(item.key);
+                                        return (
+                                          <label
+                                            key={item.key}
+                                            className="d-flex align-items-center gap-2 mb-0 cursor-pointer"
+                                            style={{
+                                              cursor: loading
+                                                ? "not-allowed"
+                                                : "pointer",
+                                              opacity: loading ? 0.7 : 1,
+                                            }}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              className="form-check-input"
+                                              checked={checked}
+                                              onChange={(e) => {
+                                                setFormData((prev) => {
+                                                  const next = { ...prev };
+                                                  const current =
+                                                    next.sidebar_access || [];
+                                                  const nextAccess = e.target
+                                                    .checked
+                                                    ? [...current, item.key]
+                                                    : current.filter(
+                                                        (k) => k !== item.key
+                                                      );
+                                                  next.sidebar_access =
+                                                    nextAccess;
+                                                  setHasUnsavedChanges(
+                                                    computeHasChanges(
+                                                      next,
+                                                      avatarFile,
+                                                      avatarRemoved
+                                                    )
+                                                  );
+                                                  return next;
+                                                });
+                                              }}
+                                              disabled={loading}
+                                            />
+                                            <i
+                                              className={item.icon}
+                                              style={{
+                                                color: "#6c757d",
+                                                width: "1rem",
+                                              }}
+                                            />
+                                            <span className="small text-dark">
+                                              {item.label}
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>

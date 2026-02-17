@@ -1,11 +1,20 @@
 import Swal from "sweetalert2";
 import { toast } from "react-toastify";
 
+// Simple SweetAlert wrapper – no custom body locking, no padding hacks.
+// This matches the behavior from your other stable projects.
+function swalFire(options) {
+  return Swal.fire({
+    ...options,
+    scrollbarPadding: false, // avoid SweetAlert adding extra body padding
+  });
+}
+
 // SweetAlert2 configurations with CPC Growth Strategies theme
 export const showAlert = {
   // Success alert
   success: (title, text = "", timer = 3000) => {
-    return Swal.fire({
+    return swalFire({
       title,
       text,
       icon: "success",
@@ -20,7 +29,7 @@ export const showAlert = {
 
   // Error alert
   error: (title, text = "", confirmButtonText = "Close", timer = null) => {
-    return Swal.fire({
+    return swalFire({
       title,
       text,
       icon: "error",
@@ -43,7 +52,7 @@ export const showAlert = {
 
   // Warning alert
   warning: (title, text = "", timer = 3000) => {
-    return Swal.fire({
+    return swalFire({
       title,
       text,
       icon: "warning",
@@ -63,7 +72,7 @@ export const showAlert = {
     confirmButtonText = "Close",
     timer = null
   ) => {
-    return Swal.fire({
+    return swalFire({
       title,
       html: htmlContent,
       icon: "info",
@@ -88,7 +97,7 @@ export const showAlert = {
     confirmButtonText = "Yes",
     cancelButtonText = "Cancel"
   ) => {
-    return Swal.fire({
+    return swalFire({
       title,
       text,
       icon: "question",
@@ -105,13 +114,21 @@ export const showAlert = {
 
   // Loading alert
   loading: (title = "Loading...", text = "", options = {}) => {
-    return Swal.fire({
+    return swalFire({
       title,
       text,
-      allowOutsideClick: options.allowOutsideClick !== undefined ? options.allowOutsideClick : false,
-      allowEscapeKey: options.allowEscapeKey !== undefined ? options.allowEscapeKey : false,
-      allowEnterKey: options.allowEnterKey !== undefined ? options.allowEnterKey : false,
-      showConfirmButton: options.showConfirmButton !== undefined ? options.showConfirmButton : false,
+      allowOutsideClick:
+        options.allowOutsideClick !== undefined
+          ? options.allowOutsideClick
+          : false,
+      allowEscapeKey:
+        options.allowEscapeKey !== undefined ? options.allowEscapeKey : false,
+      allowEnterKey:
+        options.allowEnterKey !== undefined ? options.allowEnterKey : false,
+      showConfirmButton:
+        options.showConfirmButton !== undefined
+          ? options.showConfirmButton
+          : false,
       background: "#fff",
       color: "#171D5B",
       didOpen: () => {
@@ -124,7 +141,7 @@ export const showAlert = {
     title = "Processing Action",
     text = "Please wait while we complete this request..."
   ) => {
-    return Swal.fire({
+    return swalFire({
       title,
       text,
       allowOutsideClick: false,
@@ -153,7 +170,7 @@ export const showAlert = {
     width = 600,
     showCancel = false
   ) => {
-    return Swal.fire({
+    return swalFire({
       title,
       html: htmlContent,
       icon: "info",

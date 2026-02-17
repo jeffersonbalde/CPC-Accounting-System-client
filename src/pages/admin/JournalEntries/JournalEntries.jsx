@@ -10,17 +10,18 @@ import {
   FaSyncAlt,
   FaChevronLeft,
   FaChevronRight,
+  FaFilePdf,
+  FaFileExcel,
+  FaChartBar,
 } from "react-icons/fa";
 import Portal from "../../../components/Portal";
 import JournalEntryFormModal from "./JournalEntryFormModal";
 import JournalEntryViewModal from "./JournalEntryViewModal";
+import AuthorizationCodeModal from "../../../components/AuthorizationCodeModal";
 import LoadingSpinner from "../../../components/admin/LoadingSpinner";
 
-const API_BASE_URL =
-  import.meta.env.VITE_LARAVEL_API || "http://localhost:8000/api";
-
 const JournalEntries = () => {
-  const { token } = useAuth();
+  const { request, isAdmin } = useAuth();
   const [entries, setEntries] = useState([]);
   const [filteredEntries, setFilteredEntries] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -68,10 +69,49 @@ const JournalEntries = () => {
     formattedValue: "",
   });
 
+  // Authorization code modal (personnel only)
+  const [authCodeModal, setAuthCodeModal] = useState({
+    show: false,
+    entry: null,
+    error: null,
+  });
+  // Whether any active authorization codes exist (controls if modal is needed).
+  // Default true so personnel will see the modal on first click even before
+  // the has-active check finishes, avoiding confusing \"no modal\" behavior.
+  const [authCodesRequired, setAuthCodesRequired] = useState(true);
+
+  // Report modal: period selection and PDF/Excel export
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportModalClosing, setReportModalClosing] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState("this_month");
+  const [reportCustomStart, setReportCustomStart] = useState("");
+  const [reportCustomEnd, setReportCustomEnd] = useState("");
+  const [reportExporting, setReportExporting] = useState(false);
+
   useEffect(() => {
     fetchAccounts();
     fetchEntries();
   }, []);
+
+  // Check once if there are any active authorization codes; if none, personnel
+  // should not be asked for a code (modal will be skipped).
+  useEffect(() => {
+    let isMounted = true;
+    const checkAuthCodes = async () => {
+      try {
+        const data = await request("/authorization-codes/has-active");
+        if (isMounted) {
+          setAuthCodesRequired(!!data?.has_codes);
+        }
+      } catch (err) {
+        // Fail silently; default is modal required = false.
+      }
+    };
+    checkAuthCodes();
+    return () => {
+      isMounted = false;
+    };
+  }, [request]);
 
   useEffect(() => {
     filterAndSortEntries();
@@ -79,20 +119,8 @@ const JournalEntries = () => {
 
   const fetchAccounts = async () => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/accounting/chart-of-accounts?active_only=true`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setAccounts(data);
-      }
+      const data = await request("/accounting/chart-of-accounts?active_only=true");
+      setAccounts(Array.isArray(data) ? data : (data?.data || []));
     } catch (error) {
       console.error("Error fetching accounts:", error);
     }
@@ -102,22 +130,8 @@ const JournalEntries = () => {
     try {
       setLoading(true);
       setInitialLoading(true);
-      const response = await fetch(
-        `${API_BASE_URL}/accounting/journal-entries?per_page=1000`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch entries");
-      }
-
-      const data = await response.json();
-      const entriesList = data.data || data || [];
+      const data = await request("/accounting/journal-entries?per_page=1000");
+      const entriesList = Array.isArray(data) ? data : (data?.data || []);
       setEntries(entriesList);
 
       // Calculate stats
@@ -304,25 +318,14 @@ const JournalEntries = () => {
       };
 
       const url = editingEntry
-        ? `${API_BASE_URL}/accounting/journal-entries/${editingEntry.id}`
-        : `${API_BASE_URL}/accounting/journal-entries`;
-
+        ? `/accounting/journal-entries/${editingEntry.id}`
+        : "/accounting/journal-entries";
       const method = editingEntry ? "PUT" : "POST";
 
-      const response = await fetch(url, {
+      await request(url, {
         method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(payload),
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to save journal entry");
-      }
 
       showToast.success(
         editingEntry
@@ -370,9 +373,21 @@ const JournalEntries = () => {
       showToast.warning("Please wait until the current action completes");
       return;
     }
+    if (entry.source_document) {
+      showToast.warning(entry.source_document.edit_hint);
+      return;
+    }
     setEditingEntry(entry);
+    // Normalize entry_date to YYYY-MM-DD for <input type="date"> (API may return ISO string)
+    const rawDate = entry.entry_date;
+    const entryDate =
+      typeof rawDate === "string"
+        ? rawDate.slice(0, 10)
+        : rawDate instanceof Date
+        ? rawDate.toISOString().slice(0, 10)
+        : rawDate;
     setFormData({
-      entry_date: entry.entry_date,
+      entry_date: entryDate || new Date().toISOString().split("T")[0],
       description: entry.description,
       reference_number: entry.reference_number || "",
       lines: entry.lines.map((line) => ({
@@ -386,9 +401,24 @@ const JournalEntries = () => {
     setShowForm(true);
   };
 
+  const doDeleteJournalEntry = async (entry, payload) => {
+    const opts = { method: "DELETE" };
+    if (payload && (payload.authorization_code || payload.remarks)) {
+      opts.body = JSON.stringify({
+        authorization_code: payload.authorization_code || undefined,
+        remarks: payload.remarks || undefined,
+      });
+    }
+    await request(`/accounting/journal-entries/${entry.id}`, opts);
+  };
+
   const handleDelete = async (entry) => {
     if (isActionDisabled(entry.id)) {
       showToast.warning("Please wait until the current action completes");
+      return;
+    }
+    if (entry.source_document) {
+      showToast.warning(entry.source_document.edit_hint);
       return;
     }
 
@@ -399,38 +429,71 @@ const JournalEntries = () => {
       "Cancel"
     );
 
-    if (result.isConfirmed) {
+    if (!result.isConfirmed) return;
+
+    // Admin does not need authorization code; personnel only if codes exist
+    if (isAdmin && isAdmin()) {
       try {
         setActionLoading(entry.id);
         setActionLock(true);
         showAlert.loading("Deleting journal entry...");
-
-        const response = await fetch(
-          `${API_BASE_URL}/accounting/journal-entries/${entry.id}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to delete entry");
-        }
-
+        await doDeleteJournalEntry(entry, null);
         showAlert.close();
         showToast.success("Journal entry deleted successfully");
         fetchEntries();
       } catch (error) {
         console.error("Error deleting entry:", error);
         showAlert.close();
-        showToast.error("Failed to delete journal entry");
+        showToast.error(error.message || "Failed to delete journal entry");
       } finally {
         setActionLoading(null);
         setActionLock(false);
       }
+      return;
+    }
+
+    // If no active authorization codes exist, let personnel delete without modal
+    if (!authCodesRequired) {
+      try {
+        setActionLoading(entry.id);
+        setActionLock(true);
+        showAlert.loading("Deleting journal entry...");
+        await doDeleteJournalEntry(entry, null);
+        showAlert.close();
+        showToast.success("Journal entry deleted successfully");
+        fetchEntries();
+      } catch (error) {
+        console.error("Error deleting entry:", error);
+        showAlert.close();
+        showToast.error(error.message || "Failed to delete journal entry");
+      } finally {
+        setActionLoading(null);
+        setActionLock(false);
+      }
+      return;
+    }
+
+    // Otherwise prompt personnel for an authorization code
+    setAuthCodeModal({ show: true, entry, error: null });
+  };
+
+  const handleAuthCodeSubmit = async ({ authorization_code, remarks }) => {
+    const { entry } = authCodeModal;
+    if (!entry) return;
+    try {
+      setActionLoading(entry.id);
+      setActionLock(true);
+      setAuthCodeModal((prev) => ({ ...prev, error: null }));
+      await doDeleteJournalEntry(entry, { authorization_code, remarks });
+      setAuthCodeModal({ show: false, entry: null, error: null });
+      showToast.success("Journal entry deleted successfully");
+      fetchEntries();
+    } catch (error) {
+      setAuthCodeModal((prev) => ({ ...prev, error: error.message }));
+      showToast.error(error.message || "Failed to delete journal entry");
+    } finally {
+      setActionLoading(null);
+      setActionLock(false);
     }
   };
 
@@ -439,6 +502,7 @@ const JournalEntries = () => {
       showToast.warning("Please wait until the current action completes");
       return;
     }
+    // List already has entry with lines + footprint from API; open modal instantly
     setViewingEntry(entry);
   };
 
@@ -522,6 +586,216 @@ const JournalEntries = () => {
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  // Report: get start_date and end_date (YYYY-MM-DD) and label from selected period
+  const getReportDateRange = useCallback(() => {
+    const now = new Date();
+    let startDate, endDate, label;
+    if (reportPeriod === "today") {
+      startDate = endDate = now.toISOString().split("T")[0];
+      label = `Today (${formatDate(startDate)})`;
+    } else if (reportPeriod === "this_week") {
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(now);
+      monday.setDate(diff);
+      startDate = monday.toISOString().split("T")[0];
+      endDate = now.toISOString().split("T")[0];
+      label = `This Week (${formatDate(startDate)} – ${formatDate(endDate)})`;
+    } else if (reportPeriod === "this_month") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+      endDate = now.toISOString().split("T")[0];
+      label = `This Month (${formatDate(startDate)} – ${formatDate(endDate)})`;
+    } else if (reportPeriod === "last_month") {
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split("T")[0];
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0];
+      label = `Last Month (${formatDate(startDate)} – ${formatDate(endDate)})`;
+    } else if (reportPeriod === "this_year") {
+      startDate = new Date(now.getFullYear(), 0, 1).toISOString().split("T")[0];
+      endDate = now.toISOString().split("T")[0];
+      label = `This Year (${formatDate(startDate)} – ${formatDate(endDate)})`;
+    } else {
+      startDate = reportCustomStart || now.toISOString().split("T")[0];
+      endDate = reportCustomEnd || now.toISOString().split("T")[0];
+      label = `Custom (${formatDate(startDate)} – ${formatDate(endDate)})`;
+    }
+    return { start_date: startDate, end_date: endDate, label };
+  }, [reportPeriod, reportCustomStart, reportCustomEnd]);
+
+  const fetchReportEntries = async (startDate, endDate) => {
+    const params = new URLSearchParams({
+      start_date: startDate,
+      end_date: endDate,
+      per_page: "5000",
+    });
+    const data = await request(`/accounting/journal-entries?${params.toString()}`);
+    const list = data?.data ?? (Array.isArray(data) ? data : []);
+    return list;
+  };
+
+  const handleOpenReportModal = () => {
+    setReportModalClosing(false);
+    setShowReportModal(true);
+  };
+
+  const handleCloseReportModal = async () => {
+    setReportModalClosing(true);
+    await new Promise((r) => setTimeout(r, 200));
+    setShowReportModal(false);
+    setReportModalClosing(false);
+  };
+
+  const handleExportReportPdf = async () => {
+    const { start_date, end_date, label } = getReportDateRange();
+    if (reportPeriod === "custom" && (!reportCustomStart || !reportCustomEnd)) {
+      showToast.error("Please select From and To dates for custom range.");
+      return;
+    }
+    setReportExporting(true);
+    try {
+      const list = await fetchReportEntries(start_date, end_date);
+      const generated = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+      const totalDebit = list.reduce((s, e) => s + (parseFloat(e.total_debit) || 0), 0);
+      const totalCredit = list.reduce((s, e) => s + (parseFloat(e.total_credit) || 0), 0);
+      const rowsHtml = list
+        .map(
+          (entry, idx) => `
+          <tr>
+            <td class="cell-num">${idx + 1}</td>
+            <td class="cell-text">${(entry.entry_number || "").replace(/</g, "&lt;")}</td>
+            <td class="cell-text">${formatDate(entry.entry_date)}</td>
+            <td class="cell-text">${(entry.description || "").replace(/</g, "&lt;")}</td>
+            <td class="cell-text">${(entry.reference_number || "").replace(/</g, "&lt;")}</td>
+            <td class="cell-amt">${formatCurrency(entry.total_debit)}</td>
+            <td class="cell-amt">${formatCurrency(entry.total_credit)}</td>
+          </tr>`,
+        )
+        .join("");
+      const win = window.open("", "_blank");
+      if (!win) {
+        showToast.error("Please allow pop-ups to open the report.");
+        return;
+      }
+      win.document.write(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <title>Journal Entries Report - ${label}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 11px; color: #1e293b; margin: 0; padding: 20px; line-height: 1.4; }
+            .report-header { background: linear-gradient(180deg, #1e3a5f 0%, #0f172a 100%); color: #fff; padding: 16px 24px; margin: -20px -20px 20px -20px; border-bottom: 3px solid #334155; }
+            .report-header h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
+            .report-header .sub { margin-top: 4px; font-size: 12px; opacity: 0.9; }
+            .report-meta { margin-bottom: 16px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #1e3a5f; font-size: 11px; }
+            .report-meta strong { color: #0f172a; }
+            .summary-box { display: flex; flex-wrap: wrap; gap: 24px 32px; margin-bottom: 16px; padding: 12px 16px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; }
+            .summary-box span { font-weight: 600; color: #334155; }
+            table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
+            th { background: #1e3a5f; color: #fff; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+            td { font-size: 11px; }
+            .cell-num { text-align: center; width: 4%; }
+            .cell-text { }
+            .cell-amt { text-align: right; white-space: nowrap; }
+            tbody tr:nth-child(even) { background: #f8fafc; }
+            .report-footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #64748b; }
+          </style>
+        </head>
+        <body>
+          <div class="report-header">
+            <h1>Journal Entries Report</h1>
+            <div class="sub">${label}</div>
+          </div>
+          <div class="report-meta"><strong>Generated:</strong> ${generated}</div>
+          <div class="summary-box">
+            <span>Period:</span> ${label}
+            <span>Total Entries:</span> ${list.length}
+            <span>Total Debit:</span> ${formatCurrency(totalDebit)}
+            <span>Total Credit:</span> ${formatCurrency(totalCredit)}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:4%;">#</th>
+                <th style="width:12%;">Entry Number</th>
+                <th style="width:10%;">Date</th>
+                <th style="width:28%;">Description</th>
+                <th style="width:14%;">Reference</th>
+                <th style="width:16%;">Total Debit</th>
+                <th style="width:16%;">Total Credit</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <div class="report-footer">CPC Accounting System · Journal Entries Report · ${generated}</div>
+        </body>
+        </html>
+      `);
+      win.document.close();
+      win.focus();
+      win.print();
+      showToast.success("Report opened for printing or save as PDF.");
+    } catch (err) {
+      console.error("Report export error:", err);
+      showToast.error(err?.message || "Failed to generate report.");
+    } finally {
+      setReportExporting(false);
+    }
+  };
+
+  const handleExportReportExcel = async () => {
+    const { start_date, end_date, label } = getReportDateRange();
+    if (reportPeriod === "custom" && (!reportCustomStart || !reportCustomEnd)) {
+      showToast.error("Please select From and To dates for custom range.");
+      return;
+    }
+    setReportExporting(true);
+    try {
+      const list = await fetchReportEntries(start_date, end_date);
+      const generated = new Date().toLocaleString();
+      const bom = "\uFEFF";
+      const lines = [
+        "Journal Entries Report",
+        `"${label}"`,
+        `"Generated","${generated}"`,
+        "",
+        `"Total Entries",${list.length}`,
+        "",
+        "#,Entry Number,Date,Description,Reference,Total Debit,Total Credit",
+      ];
+      list.forEach((entry, idx) => {
+        const desc = (entry.description || "").replace(/"/g, '""');
+        const ref = (entry.reference_number || "").replace(/"/g, '""');
+        lines.push(
+          [
+            idx + 1,
+            `"${(entry.entry_number || "").replace(/"/g, '""')}"`,
+            `"${formatDate(entry.entry_date)}"`,
+            `"${desc}"`,
+            `"${ref}"`,
+            entry.total_debit ?? "",
+            entry.total_credit ?? "",
+          ].join(","),
+        );
+      });
+      const csvContent = bom + lines.join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Journal_Entries_Report_${start_date}_to_${end_date}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast.success("Report downloaded as Excel (CSV).");
+    } catch (err) {
+      console.error("Report export error:", err);
+      showToast.error(err?.message || "Failed to generate report.");
+    } finally {
+      setReportExporting(false);
+    }
   };
 
   const calculateTotals = () => {
@@ -654,6 +928,59 @@ const JournalEntries = () => {
         .modal-content-animation.exit {
           animation: modalContentSlideOut 0.2s ease-in forwards;
         }
+
+        /* Mobile-only: keep # and Actions sticky while scrolling table */
+        @media (max-width: 767.98px) {
+          .journal-entries-table-wrap {
+            position: relative;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            width: 100%;
+          }
+
+          .journal-entries-table-wrap table {
+            min-width: 860px;
+            border-collapse: separate;
+            border-spacing: 0;
+          }
+
+          .journal-entries-table-wrap .je-col-index,
+          .journal-entries-table-wrap .je-col-actions {
+            position: sticky;
+            /* Solid background to avoid "glass" overlay */
+            background-color: var(--bs-table-bg);
+            z-index: 5;
+          }
+
+          .journal-entries-table-wrap thead .je-col-index,
+          .journal-entries-table-wrap thead .je-col-actions {
+            z-index: 7;
+            background: var(--background-light, #f8f9fa);
+          }
+
+          .journal-entries-table-wrap .je-col-index {
+            left: 0;
+            min-width: 44px;
+            width: 44px;
+          }
+
+          .journal-entries-table-wrap .je-col-actions {
+            left: 44px; /* same as index width */
+            min-width: 128px;
+            width: 128px;
+          }
+
+          /* Match Bootstrap striped + hover backgrounds for sticky cells */
+          .journal-entries-table-wrap.table-striped > tbody > tr:nth-of-type(odd) > .je-col-index,
+          .journal-entries-table-wrap.table-striped > tbody > tr:nth-of-type(odd) > .je-col-actions {
+            background-color: var(--bs-table-striped-bg);
+          }
+
+          .journal-entries-table-wrap.table-hover > tbody > tr:hover > .je-col-index,
+          .journal-entries-table-wrap.table-hover > tbody > tr:hover > .je-col-actions {
+            background-color: var(--bs-table-hover-bg);
+          }
+        }
       `}</style>
 
       {loading ? (
@@ -728,6 +1055,37 @@ const JournalEntries = () => {
               >
                 <FaSyncAlt className="me-1" />
                 Refresh
+              </button>
+              <button
+                className="btn btn-sm"
+                onClick={handleOpenReportModal}
+                disabled={loading || isActionDisabled()}
+                style={{
+                  transition: "all 0.2s ease-in-out",
+                  border: "2px solid #0f172a",
+                  color: "#0f172a",
+                  backgroundColor: "transparent",
+                  borderRadius: "4px",
+                }}
+                onMouseEnter={(e) => {
+                  if (!e.target.disabled) {
+                    e.target.style.transform = "translateY(-1px)";
+                    e.target.style.boxShadow = "0 4px 8px rgba(0,0,0,0.1)";
+                    e.target.style.backgroundColor = "#1e3a5f";
+                    e.target.style.color = "white";
+                    e.target.style.borderColor = "#1e3a5f";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.transform = "translateY(0)";
+                  e.target.style.boxShadow = "none";
+                  e.target.style.backgroundColor = "transparent";
+                  e.target.style.color = "#0f172a";
+                  e.target.style.borderColor = "#0f172a";
+                }}
+              >
+                <FaChartBar className="me-1" />
+                Generate Report
               </button>
             </div>
           </div>
@@ -1294,20 +1652,20 @@ const JournalEntries = () => {
                   )}
                 </div>
               ) : (
-                <div className="table-responsive">
+                <div className="table-responsive journal-entries-table-wrap">
                   <table className="table table-striped table-hover mb-0">
                     <thead
                       style={{ backgroundColor: "var(--background-light)" }}
                     >
                       <tr>
                         <th
-                          className="text-center small fw-semibold"
+                          className="text-center small fw-semibold je-col-index"
                           style={{ width: "4%" }}
                         >
                           #
                         </th>
                         <th
-                          className="text-center small fw-semibold"
+                          className="text-center small fw-semibold je-col-actions"
                           style={{ width: "10%" }}
                         >
                           Actions
@@ -1404,12 +1762,12 @@ const JournalEntries = () => {
                       {currentEntries.map((entry, index) => (
                         <tr key={entry.id} className="align-middle">
                           <td
-                            className="text-center fw-bold"
+                            className="text-center fw-bold je-col-index"
                             style={{ color: "var(--text-primary)" }}
                           >
                             {startIndex + index + 1}
                           </td>
-                          <td className="text-center">
+                          <td className="text-center je-col-actions">
                             <div className="d-flex justify-content-center gap-1">
                               <button
                                 className="btn btn-info btn-sm text-white"
@@ -1444,8 +1802,8 @@ const JournalEntries = () => {
                               <button
                                 className="btn btn-success btn-sm text-white"
                                 onClick={() => handleEdit(entry)}
-                                disabled={isActionDisabled()}
-                                title="Edit Entry"
+                                disabled={isActionDisabled() || !!entry.source_document}
+                                title={entry.source_document ? entry.source_document.edit_hint : "Edit Entry"}
                                 style={{
                                   width: "32px",
                                   height: "32px",
@@ -1474,8 +1832,8 @@ const JournalEntries = () => {
                               <button
                                 className="btn btn-danger btn-sm text-white"
                                 onClick={() => handleDelete(entry)}
-                                disabled={isActionDisabled(entry.id)}
-                                title="Delete Entry"
+                                disabled={isActionDisabled(entry.id) || !!entry.source_document}
+                                title={entry.source_document ? entry.source_document.edit_hint : "Delete Entry"}
                                 style={{
                                   width: "32px",
                                   height: "32px",
@@ -1540,6 +1898,15 @@ const JournalEntries = () => {
                             >
                               {entry.description}
                             </div>
+                            {entry.source_document && (
+                              <span
+                                className="badge bg-secondary mt-1"
+                                style={{ fontSize: "0.65rem" }}
+                                title={entry.source_document.edit_hint}
+                              >
+                                From {entry.source_document.type}: {entry.source_document.reference}
+                              </span>
+                            )}
                           </td>
                           <td style={{ maxWidth: "150px", overflow: "hidden" }}>
                             <div
@@ -1555,10 +1922,36 @@ const JournalEntries = () => {
                             </div>
                           </td>
                           <td className="text-end text-danger fw-semibold">
-                            {formatCurrency(entry.total_debit)}
+                            <span
+                              className="d-inline-block text-truncate"
+                              style={{ maxWidth: "140px", cursor: "pointer" }}
+                              title={formatCurrency(entry.total_debit)}
+                              onClick={() =>
+                                handleNumberClick(
+                                  "Total Debit",
+                                  entry.total_debit,
+                                  true
+                                )
+                              }
+                            >
+                              {formatCurrency(entry.total_debit)}
+                            </span>
                           </td>
                           <td className="text-end text-success fw-semibold">
-                            {formatCurrency(entry.total_credit)}
+                            <span
+                              className="d-inline-block text-truncate"
+                              style={{ maxWidth: "140px", cursor: "pointer" }}
+                              title={formatCurrency(entry.total_credit)}
+                              onClick={() =>
+                                handleNumberClick(
+                                  "Total Credit",
+                                  entry.total_credit,
+                                  true
+                                )
+                              }
+                            >
+                              {formatCurrency(entry.total_credit)}
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -1715,7 +2108,7 @@ const JournalEntries = () => {
                                   "0 2px 4px rgba(0,0,0,0.1)";
                                 e.target.style.backgroundColor =
                                   "var(--primary-light)";
-                                e.target.style.color = "var(--text-primary)";
+                                e.target.style.color = "white";
                               }
                             }}
                             onMouseLeave={(e) => {
@@ -1824,6 +2217,148 @@ const JournalEntries = () => {
               }
             />
           )}
+
+          {/* Authorization Code Modal (personnel only) */}
+          <AuthorizationCodeModal
+            open={authCodeModal.show}
+            onClose={() =>
+              setAuthCodeModal({ show: false, entry: null, error: null })
+            }
+            onSubmit={handleAuthCodeSubmit}
+            loading={
+              actionLock &&
+              authCodeModal.entry &&
+              actionLoading === authCodeModal.entry?.id
+            }
+            title="Authorization Required"
+            message="Enter the authorization code from your administrator to delete this journal entry."
+            actionLabel="Delete Entry"
+            error={authCodeModal.error}
+          />
+
+          {/* Generate Report Modal – period selection, PDF/Excel export */}
+          {showReportModal && (
+            <Portal>
+              <div
+                className={`modal fade show d-block modal-backdrop-animation ${reportModalClosing ? "exit" : ""}`}
+                style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+                tabIndex="-1"
+                onClick={(e) => e.target === e.currentTarget && handleCloseReportModal()}
+              >
+                <div className="modal-dialog modal-dialog-centered mx-3 mx-sm-auto">
+                  <div
+                    className={`modal-content border-0 rounded-3 modal-content-animation ${reportModalClosing ? "exit" : ""}`}
+                    style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div
+                      className="modal-header border-0 rounded-top-3 py-3 text-white"
+                      style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%)" }}
+                    >
+                      <h5 className="modal-title fw-bold d-flex align-items-center gap-2">
+                        <FaChartBar />
+                        Generate Journal Entries Report
+                      </h5>
+                      <button
+                        type="button"
+                        className="btn-close btn-close-white"
+                        aria-label="Close"
+                        onClick={handleCloseReportModal}
+                        disabled={reportExporting}
+                      />
+                    </div>
+                    <div className="modal-body bg-light py-4">
+                      <p className="text-muted small mb-3">
+                        Select the period for the report, then export to PDF (print) or Excel (CSV).
+                      </p>
+                      <div className="mb-3">
+                        <label className="form-label fw-semibold">Period</label>
+                        <select
+                          className="form-select"
+                          value={reportPeriod}
+                          onChange={(e) => setReportPeriod(e.target.value)}
+                          disabled={reportExporting}
+                          style={{ borderColor: "#cbd5e1", borderRadius: "6px" }}
+                        >
+                          <option value="today">Today</option>
+                          <option value="this_week">This Week</option>
+                          <option value="this_month">This Month</option>
+                          <option value="last_month">Last Month</option>
+                          <option value="this_year">This Year</option>
+                          <option value="custom">Custom Range</option>
+                        </select>
+                      </div>
+                      {reportPeriod === "custom" && (
+                        <div className="row g-2 mb-3">
+                          <div className="col-6">
+                            <label className="form-label small fw-semibold">From</label>
+                            <input
+                              type="date"
+                              className="form-control form-control-sm"
+                              value={reportCustomStart}
+                              onChange={(e) => setReportCustomStart(e.target.value)}
+                              disabled={reportExporting}
+                              style={{ borderColor: "#cbd5e1", borderRadius: "6px" }}
+                            />
+                          </div>
+                          <div className="col-6">
+                            <label className="form-label small fw-semibold">To</label>
+                            <input
+                              type="date"
+                              className="form-control form-control-sm"
+                              value={reportCustomEnd}
+                              onChange={(e) => setReportCustomEnd(e.target.value)}
+                              disabled={reportExporting}
+                              style={{ borderColor: "#cbd5e1", borderRadius: "6px" }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div className="d-flex flex-wrap gap-2 mt-4">
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-sm text-white d-flex align-items-center gap-2"
+                          onClick={handleExportReportPdf}
+                          disabled={reportExporting}
+                          style={{ borderRadius: "6px" }}
+                        >
+                          {reportExporting ? (
+                            <span className="spinner-border spinner-border-sm" role="status" />
+                          ) : (
+                            <FaFilePdf />
+                          )}
+                          Export to PDF
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-success btn-sm text-white d-flex align-items-center gap-2"
+                          onClick={handleExportReportExcel}
+                          disabled={reportExporting}
+                          style={{ borderRadius: "6px" }}
+                        >
+                          {reportExporting ? (
+                            <span className="spinner-border spinner-border-sm" role="status" />
+                          ) : (
+                            <FaFileExcel />
+                          )}
+                          Export to Excel
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleCloseReportModal}
+                          disabled={reportExporting}
+                          style={{ borderRadius: "6px" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Portal>
+          )}
         </>
       )}
     </div>
@@ -1855,14 +2390,7 @@ const NumberViewModal = ({ title, value, onClose }) => {
 
   useEffect(() => {
     document.addEventListener("keydown", handleEscapeKey);
-    document.body.classList.add("modal-open");
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", handleEscapeKey);
-      document.body.classList.remove("modal-open");
-      document.body.style.overflow = "auto";
-    };
+    return () => document.removeEventListener("keydown", handleEscapeKey);
   }, []);
 
   const handleCopy = () => {

@@ -5,10 +5,23 @@ const AuthContext = createContext(null);
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
+const CURRENT_ACCOUNT_ID_KEY = "current_account_id";
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem("auth_token"));
   const [loading, setLoading] = useState(true);
+  const [accounts, setAccounts] = useState([]);
+  const [currentAccount, setCurrentAccountState] = useState(null);
+
+  const setCurrentAccount = (account) => {
+    setCurrentAccountState(account);
+    if (account?.id) {
+      localStorage.setItem(CURRENT_ACCOUNT_ID_KEY, String(account.id));
+    } else {
+      localStorage.removeItem(CURRENT_ACCOUNT_ID_KEY);
+    }
+  };
 
   // Initialize auth state from localStorage
   useEffect(() => {
@@ -17,7 +30,6 @@ export const AuthProvider = ({ children }) => {
 
       if (storedToken) {
         setToken(storedToken);
-        // Fetch user info from API using the token
         try {
           const response = await fetch(`${API_BASE_URL}/user`, {
             headers: {
@@ -31,32 +43,63 @@ export const AuthProvider = ({ children }) => {
             const data = await response.json();
             if (data.success && data.user) {
               setUser(data.user);
+              let accountList = data.accounts || [];
+              
+              // If /user didn't return accounts, fetch from /accounts endpoint (works for both admin and personnel)
+              if (accountList.length === 0) {
+                try {
+                  const accountsResponse = await fetch(`${API_BASE_URL}/accounts`, {
+                    headers: {
+                      "Content-Type": "application/json",
+                      Accept: "application/json",
+                      Authorization: `Bearer ${storedToken}`,
+                    },
+                  });
+                  if (accountsResponse.ok) {
+                    const accountsData = await accountsResponse.json();
+                    if (accountsData?.accounts) {
+                      accountList = accountsData.accounts;
+                      console.log("Fetched accounts from /accounts endpoint:", accountList.length);
+                    }
+                  } else {
+                    console.warn("Failed to fetch accounts, status:", accountsResponse.status);
+                  }
+                } catch (accountsError) {
+                  console.error("Failed to fetch accounts:", accountsError);
+                }
+              }
+              
+              setAccounts(accountList);
+              const savedId = localStorage.getItem(CURRENT_ACCOUNT_ID_KEY);
+              const matched = savedId && accountList.find((a) => String(a.id) === savedId);
+              const defaultAccount = data.current_account || accountList[0] || null;
+              setCurrentAccountState(matched || defaultAccount);
+              if (matched || defaultAccount) {
+                localStorage.setItem(CURRENT_ACCOUNT_ID_KEY, String((matched || defaultAccount).id));
+              }
             } else {
-              // Response is ok but no user data, token might be invalid
               if (response.status === 401) {
                 localStorage.removeItem("auth_token");
                 setToken(null);
               }
             }
           } else {
-            // Only remove token if it's an authentication error (401)
-            // Don't remove on other errors (network, server errors, etc.)
             if (response.status === 401 || response.status === 403) {
               localStorage.removeItem("auth_token");
               setToken(null);
+              setUser(null);
+              setAccounts([]);
+              setCurrentAccountState(null);
+              localStorage.removeItem(CURRENT_ACCOUNT_ID_KEY);
             }
-            // For other errors, keep the token but don't set user
-            // This allows the app to function if there's a temporary server issue
           }
         } catch (error) {
           console.error("Failed to fetch user:", error);
-          // Don't remove token on network errors - might be temporary
-          // Only remove if it's a clear authentication error
-          // Keep token and let user try again
         }
       } else {
-        // No token in localStorage
         setToken(null);
+        setAccounts([]);
+        setCurrentAccountState(null);
       }
       setLoading(false);
     };
@@ -64,16 +107,38 @@ export const AuthProvider = ({ children }) => {
     initializeAuth();
   }, []);
 
-  // API request helper
+  // Ensure currentAccount is set when accounts are loaded but currentAccount is null
+  useEffect(() => {
+    if (accounts.length > 0 && !currentAccount) {
+      console.log("Setting currentAccount from accounts:", accounts.length, "accounts available");
+      const savedId = localStorage.getItem(CURRENT_ACCOUNT_ID_KEY);
+      const matched = savedId && accounts.find((a) => String(a.id) === savedId);
+      const defaultAccount = matched || accounts[0];
+      if (defaultAccount) {
+        console.log("Setting currentAccount to:", defaultAccount.name, defaultAccount.id);
+        setCurrentAccountState(defaultAccount);
+        localStorage.setItem(CURRENT_ACCOUNT_ID_KEY, String(defaultAccount.id));
+      }
+    }
+  }, [accounts, currentAccount]);
+
+  // API request helper – always sends X-Account-Id for accounting routes so COA and all accounting data load
   const request = async (endpoint, options = {}) => {
     const url = `${API_BASE_URL}${endpoint}`;
     const currentToken = token || localStorage.getItem("auth_token");
+    // Use currentAccount, or for /accounting/* use first account so COA etc. always load
+    const accountId =
+      currentAccount?.id ??
+      (endpoint.startsWith("/accounting/") && accounts?.length > 0
+        ? accounts[0].id
+        : undefined);
 
     const config = {
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
         ...(currentToken && { Authorization: `Bearer ${currentToken}` }),
+        ...(accountId != null && { "X-Account-Id": String(accountId) }),
         ...options.headers,
       },
       ...options,
@@ -119,16 +184,25 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (!response.ok) {
-        // If it's an authentication error, clear token
         if (response.status === 401 || response.status === 403) {
           localStorage.removeItem("auth_token");
           setToken(null);
           setUser(null);
         }
+        // Prefer first validation error (e.g. "Your account has been deactivated...")
+        if (data.errors && typeof data.errors === "object") {
+          const firstKey = Object.keys(data.errors)[0];
+          const firstMsg = firstKey
+            ? Array.isArray(data.errors[firstKey])
+              ? data.errors[firstKey][0]
+              : data.errors[firstKey]
+            : null;
+          if (firstMsg) throw new Error(firstMsg);
+        }
         throw new Error(
           data.message ||
             data.error ||
-            data.error?.message ||
+            (data.error && data.error.message) ||
             "An error occurred"
         );
       }
@@ -153,11 +227,40 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (response.success && response.token) {
-        setToken(response.token);
+        const loginToken = response.token;
+        setToken(loginToken);
         setUser(response.user);
-        localStorage.setItem("auth_token", response.token);
-        // User info is not stored, only token
-
+        localStorage.setItem("auth_token", loginToken);
+        let accountList = response.accounts || [];
+        
+        // If /login didn't return accounts, fetch from /accounts endpoint (works for both admin and personnel)
+        if (accountList.length === 0) {
+          try {
+            const accountsResponse = await fetch(`${API_BASE_URL}/accounts`, {
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+                Authorization: `Bearer ${loginToken}`,
+              },
+            });
+            if (accountsResponse.ok) {
+              const accountsData = await accountsResponse.json();
+              if (accountsData?.accounts) {
+                accountList = accountsData.accounts;
+                console.log("Fetched accounts from /accounts endpoint after login:", accountList.length);
+              }
+            }
+          } catch (accountsError) {
+            console.error("Failed to fetch accounts after login:", accountsError);
+          }
+        }
+        
+        setAccounts(accountList);
+        const defaultAccount = response.current_account || accountList[0] || null;
+        setCurrentAccountState(defaultAccount);
+        if (defaultAccount) {
+          localStorage.setItem(CURRENT_ACCOUNT_ID_KEY, String(defaultAccount.id));
+        }
         return { success: true, user: response.user };
       }
 
@@ -181,28 +284,61 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setToken(null);
       setUser(null);
+      setAccounts([]);
+      setCurrentAccountState(null);
       localStorage.removeItem("auth_token");
-      // User info is not stored, so no need to remove it
-      // Redirect to login
+      localStorage.removeItem(CURRENT_ACCOUNT_ID_KEY);
       window.location.href = "/";
     }
   };
 
-  // Get current user
+  // Get current user (also refreshes accounts and current account)
   const getUser = async () => {
     try {
       const response = await request("/user");
       if (response.success) {
         setUser(response.user);
-        // User info is not stored in localStorage, only in state
+        let accountList = response.accounts || [];
+        
+        // If /user didn't return accounts, fetch from /accounts endpoint (works for both admin and personnel)
+        if (accountList.length === 0) {
+          try {
+            const accountsData = await request("/accounts");
+            if (accountsData?.accounts) {
+              accountList = accountsData.accounts;
+              console.log("Fetched accounts from /accounts endpoint in getUser:", accountList.length);
+            }
+          } catch (accountsError) {
+            console.error("Failed to fetch accounts in getUser:", accountsError);
+          }
+        }
+        
+        setAccounts(accountList);
+        const savedId = localStorage.getItem(CURRENT_ACCOUNT_ID_KEY);
+        const matched = savedId && accountList.find((a) => String(a.id) === savedId);
+        const defaultAccount = response.current_account || accountList[0] || null;
+        setCurrentAccountState(matched || defaultAccount);
         setLoading(false);
         return response.user;
       }
     } catch (error) {
       console.error("Get user error:", error);
       setLoading(false);
-      // If token is invalid, logout
       logout();
+    }
+  };
+
+  // Refresh only the accounts list (e.g. after toggling active/inactive). Does not change currentAccount.
+  const refreshAccounts = async () => {
+    try {
+      // Admins: include inactive so Accounts & COA and topbar always see the full list
+      const url = isAdmin() ? "/accounts?include_inactive=1" : "/accounts";
+      const data = await request(url);
+      if (data?.accounts) {
+        setAccounts(data.accounts);
+      }
+    } catch (error) {
+      console.error("Refresh accounts error:", error);
     }
   };
 
@@ -227,13 +363,17 @@ export const AuthProvider = ({ children }) => {
     user,
     token,
     loading,
+    accounts,
+    currentAccount,
+    setCurrentAccount,
     login,
     logout,
     getUser,
+    refreshAccounts,
     isAuthenticated,
     isAdmin,
     isPersonnel,
-    request, // Expose request method for other API calls
+    request,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

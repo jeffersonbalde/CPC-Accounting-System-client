@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../../../contexts/AuthContext";
 import { showAlert, showToast } from "../../../services/notificationService";
 import Portal from "../../../components/Portal";
+import LoadingSpinner from "../../../components/admin/LoadingSpinner";
 import {
   FaKey,
   FaLock,
@@ -19,7 +21,9 @@ import {
 } from "react-icons/fa";
 
 const Settings = () => {
-  const { user, token } = useAuth();
+  const { user, token, isAdmin } = useAuth();
+  const showAuthCodes = isAdmin && isAdmin();
+  const [initialLoading, setInitialLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("password");
   const [isPasswordLoading, setIsPasswordLoading] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -75,20 +79,18 @@ const Settings = () => {
     try {
       const API_BASE_URL =
         import.meta.env.VITE_API_URL || "http://localhost:8000/api";
-      const response = await fetch(
-        `${API_BASE_URL}/admin/authorization-codes`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-          },
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/authorization-codes`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
 
       if (response.ok) {
         const data = await response.json();
-        setAuthCodes(data.codes || []);
-        setFilteredCodes(data.codes || []);
+        const list = data.codes || data.data || [];
+        setAuthCodes(list);
+        setFilteredCodes(list);
       } else {
         throw new Error("Failed to fetch authorization codes");
       }
@@ -101,6 +103,11 @@ const Settings = () => {
       setLoadingCodes(false);
     }
   };
+
+  useEffect(() => {
+    const t = setTimeout(() => setInitialLoading(false), 150);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     if (activeTab === "auth-codes" && authCodes.length === 0) {
@@ -142,8 +149,8 @@ const Settings = () => {
       const API_BASE_URL =
         import.meta.env.VITE_API_URL || "http://localhost:8000/api";
       const url = editingCode
-        ? `${API_BASE_URL}/admin/authorization-codes/${editingCode.id}`
-        : `${API_BASE_URL}/admin/authorization-codes`;
+        ? `${API_BASE_URL}/authorization-codes/${editingCode.id}`
+        : `${API_BASE_URL}/authorization-codes`;
 
       const method = editingCode ? "PUT" : "POST";
 
@@ -258,7 +265,7 @@ const Settings = () => {
       const API_BASE_URL =
         import.meta.env.VITE_API_URL || "http://localhost:8000/api";
       const response = await fetch(
-        `${API_BASE_URL}/admin/authorization-codes/${code.id}`,
+        `${API_BASE_URL}/authorization-codes/${code.id}`,
         {
           method: "DELETE",
           headers: {
@@ -314,8 +321,50 @@ const Settings = () => {
     }
   };
 
+  // Real-time validation (derived, no modal)
+  const newPasswordError =
+    passwordForm.new_password.length > 0 && passwordForm.new_password.length < 6
+      ? "Password must be at least 6 characters long."
+      : null;
+  const confirmError =
+    passwordForm.new_password_confirmation.length > 0 &&
+    passwordForm.new_password !== passwordForm.new_password_confirmation
+      ? "Passwords do not match."
+      : null;
+  const confirmMatch =
+    passwordForm.new_password.length > 0 &&
+    passwordForm.new_password_confirmation.length > 0 &&
+    passwordForm.new_password === passwordForm.new_password_confirmation;
+
   const handlePasswordChange = async (e) => {
     e.preventDefault();
+
+    const current = (passwordForm.current_password || "").trim();
+    const newPwd = (passwordForm.new_password || "").trim();
+    const confirmPwd = (passwordForm.new_password_confirmation || "").trim();
+
+    // Validate first – no confirm dialog or loading until valid
+    setFormErrors({});
+    const errors = {};
+
+    if (!current) {
+      errors.current_password = ["Current password is required."];
+    }
+    if (!newPwd) {
+      errors.new_password = ["New password is required."];
+    } else if (newPwd.length < 6) {
+      errors.new_password = ["Password must be at least 6 characters long."];
+    }
+    if (!confirmPwd) {
+      errors.new_password_confirmation = ["Please confirm your new password."];
+    } else if (newPwd !== confirmPwd) {
+      errors.new_password_confirmation = ["Passwords do not match."];
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
 
     const result = await showAlert.confirm(
       "Change Password",
@@ -340,44 +389,6 @@ const Settings = () => {
     setIsPasswordLoading(true);
     setFormErrors({});
 
-    // Validation checks
-    if (!passwordForm.current_password) {
-      showAlert.close();
-      setFormErrors({ current_password: ["Current password is required."] });
-      setIsPasswordLoading(false);
-      showAlert.error("Validation Error", "Current password is required.");
-      return;
-    }
-
-    if (!passwordForm.new_password) {
-      showAlert.close();
-      setFormErrors({ new_password: ["New password is required."] });
-      setIsPasswordLoading(false);
-      showAlert.error("Validation Error", "New password is required.");
-      return;
-    }
-
-    if (passwordForm.new_password.length < 6) {
-      showAlert.close();
-      setFormErrors({
-        new_password: ["Password must be at least 6 characters long."],
-      });
-      setIsPasswordLoading(false);
-      showAlert.error(
-        "Validation Error",
-        "Password must be at least 6 characters long."
-      );
-      return;
-    }
-
-    if (passwordForm.new_password !== passwordForm.new_password_confirmation) {
-      showAlert.close();
-      setFormErrors({ new_password_confirmation: ["Passwords do not match."] });
-      setIsPasswordLoading(false);
-      showAlert.error("Validation Error", "Passwords do not match.");
-      return;
-    }
-
     try {
       const API_BASE_URL =
         import.meta.env.VITE_API_URL || "http://localhost:8000/api";
@@ -385,9 +396,9 @@ const Settings = () => {
         name: user?.name || "",
         email: user?.email || "",
         contact_number: user?.contact_number || "",
-        current_password: passwordForm.current_password,
-        new_password: passwordForm.new_password,
-        new_password_confirmation: passwordForm.new_password_confirmation,
+        current_password: current,
+        new_password: newPwd,
+        new_password_confirmation: confirmPwd,
       };
 
       const response = await fetch(`${API_BASE_URL}/profile`, {
@@ -440,25 +451,39 @@ const Settings = () => {
     }
   };
 
+  if (initialLoading) {
+    return (
+      <div className="container-fluid px-3 px-md-4 py-3">
+        <LoadingSpinner text="Loading settings..." />
+      </div>
+    );
+  }
+
   return (
-    <div className="container-fluid px-4 py-3 fadeIn">
-      {/* Header - MATCHING ADMIN SETTINGS STYLING */}
-      <div className="text-center mb-4">
-        <div className="d-flex justify-content-center align-items-center mb-3">
+    <>
+      <motion.div
+        className="container-fluid px-3 px-md-4 py-3 settings-page"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeInOut" }}
+      >
+      {/* Header - mobile: stack/center; large: centered */}
+      <div className="settings-page-header text-center text-md-start mb-3 mb-md-4">
+        <div className="d-flex flex-column flex-md-row justify-content-center justify-content-lg-center align-items-center mb-2 mb-md-3">
           <div
-            className="rounded-circle d-flex align-items-center justify-content-center me-3"
+            className="rounded-circle d-flex align-items-center justify-content-center me-0 me-md-3 mb-2 mb-md-0 flex-shrink-0"
             style={{
-              width: "50px",
-              height: "50px",
+              width: "48px",
+              height: "48px",
               background: "linear-gradient(135deg, #0c203f 0%, #1f3e6d 100%)",
               color: "white",
             }}
           >
             <FaCog size={22} />
           </div>
-          <div className="text-start">
+          <div>
             <h1
-              className="h3 mb-1 fw-bold"
+              className="h4 mb-1 fw-bold"
               style={{ color: theme.textPrimary }}
             >
               Settings
@@ -466,7 +491,7 @@ const Settings = () => {
             <p className="text-muted mb-0 small">
               {user?.name} • {user?.role === "admin" ? "Administrator" : "User"}
             </p>
-            <small className="text-muted">
+            <small className="text-muted d-none d-sm-inline">
               System configuration and security settings
             </small>
           </div>
@@ -474,23 +499,27 @@ const Settings = () => {
       </div>
 
       <div className="row g-3">
-        {/* Sidebar Navigation - MATCHING ADMIN SETTINGS STYLING */}
+        {/* Sidebar - mobile: horizontal tabs; desktop: vertical like Aurora */}
         <div className="col-12 col-lg-3">
           <div
-            className="card border-0 h-100"
+            className="card border-0 h-100 settings-menu-card"
             style={{ boxShadow: "0 8px 25px rgba(0, 0, 0, 0.15)" }}
           >
-            <div className="card-header bg-transparent border-0 py-3 px-3">
-              <h6 className="mb-0 fw-bold" style={{ color: theme.textPrimary }}>
+            <div className="card-header bg-transparent border-0 py-2 py-md-3 px-2 px-md-3">
+              <h6
+                className="mb-0 fw-bold small"
+                style={{ color: theme.textPrimary }}
+              >
                 Settings Menu
               </h6>
             </div>
-            <div className="card-body p-3">
-              <div className="d-flex flex-column gap-2">
+            <div className="card-body p-2 p-md-3">
+              <div className="d-flex flex-row flex-lg-column flex-wrap gap-2">
                 {/* Change Password Tab */}
                 <button
-                  className={`btn text-start p-3 d-flex align-items-center border-0 position-relative overflow-hidden ${
-                    activeTab === "password" ? "active" : ""
+                  type="button"
+                  className={`btn text-start p-2 p-lg-3 d-flex align-items-center border-0 position-relative flex-grow-1 flex-lg-grow-0 settings-tab-btn ${
+                    activeTab === "password" ? "settings-tab-selected" : ""
                   }`}
                   onClick={() => handleTabChange("password")}
                   style={{
@@ -550,124 +579,139 @@ const Settings = () => {
                   </div>
                 </button>
 
-                {/* Authorization Codes Tab */}
-                <button
-                  className={`btn text-start p-3 d-flex align-items-center border-0 position-relative overflow-hidden ${
-                    activeTab === "auth-codes" ? "active" : ""
-                  }`}
-                  onClick={() => {
-                    handleTabChange("auth-codes");
-                    if (authCodes.length === 0) {
-                      fetchAuthorizationCodes();
-                    }
-                  }}
-                  style={{
-                    background:
-                      activeTab === "auth-codes"
-                        ? "linear-gradient(135deg, #0c203f 0%, #1f3e6d 100%)"
-                        : "#f8f9fa",
-                    border:
-                      activeTab === "auth-codes" ? "none" : "1px solid #dee2e6",
-                    borderRadius: "8px",
-                    color: activeTab === "auth-codes" ? "white" : "#495057",
-                    fontWeight: activeTab === "auth-codes" ? "600" : "500",
-                    transition: "all 0.3s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTab !== "auth-codes") {
-                      e.target.style.background = "#e9ecef";
-                      e.target.style.transform = "translateY(-2px)";
-                      e.target.style.boxShadow = "0 4px 8px rgba(0,0,0,0.1)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTab !== "auth-codes") {
-                      e.target.style.background = "#f8f9fa";
-                      e.target.style.transform = "translateY(0)";
-                      e.target.style.boxShadow = "none";
-                    }
-                  }}
-                >
-                  <div
-                    className="rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0"
+                {/* Authorization Codes Tab - Admin only */}
+                {showAuthCodes && (
+                  <button
+                    type="button"
+                    className={`btn text-start p-2 p-lg-3 d-flex align-items-center border-0 position-relative flex-grow-1 flex-lg-grow-0 settings-tab-btn ${
+                      activeTab === "auth-codes" ? "settings-tab-selected" : ""
+                    }`}
+                    onClick={() => {
+                      handleTabChange("auth-codes");
+                      if (authCodes.length === 0) {
+                        fetchAuthorizationCodes();
+                      }
+                    }}
                     style={{
-                      width: "36px",
-                      height: "36px",
                       background:
                         activeTab === "auth-codes"
-                          ? "rgba(255, 255, 255, 0.2)"
-                          : "linear-gradient(135deg, #0c203f 0%, #1f3e6d 100%)",
-                      color: "white",
+                          ? "linear-gradient(135deg, #0c203f 0%, #1f3e6d 100%)"
+                          : "#f8f9fa",
+                      border:
+                        activeTab === "auth-codes"
+                          ? "none"
+                          : "1px solid #dee2e6",
+                      borderRadius: "8px",
+                      color: activeTab === "auth-codes" ? "white" : "#495057",
+                      fontWeight: activeTab === "auth-codes" ? "600" : "500",
                       transition: "all 0.3s ease",
                     }}
+                    onMouseEnter={(e) => {
+                      if (activeTab !== "auth-codes") {
+                        e.target.style.background = "#e9ecef";
+                        e.target.style.transform = "translateY(-2px)";
+                        e.target.style.boxShadow = "0 4px 8px rgba(0,0,0,0.1)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeTab !== "auth-codes") {
+                        e.target.style.background = "#f8f9fa";
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = "none";
+                      }
+                    }}
                   >
-                    <FaShieldAlt size={16} />
-                  </div>
-                  <div className="text-start">
-                    <div className="fw-semibold" style={{ fontSize: "0.9rem" }}>
-                      Authorization Codes
-                    </div>
-                    <small
+                    <div
+                      className="rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0"
                       style={{
-                        opacity: activeTab === "auth-codes" ? 0.9 : 0.7,
-                        fontSize: "0.75rem",
+                        width: "36px",
+                        height: "36px",
+                        background:
+                          activeTab === "auth-codes"
+                            ? "rgba(255, 255, 255, 0.2)"
+                            : "linear-gradient(135deg, #0c203f 0%, #1f3e6d 100%)",
+                        color: "white",
+                        transition: "all 0.3s ease",
                       }}
                     >
-                      Manage authorization codes
-                    </small>
-                  </div>
-                </button>
+                      <FaShieldAlt size={16} />
+                    </div>
+                    <div className="text-start">
+                      <div
+                        className="fw-semibold"
+                        style={{ fontSize: "0.9rem" }}
+                      >
+                        Authorization Codes
+                      </div>
+                      <small
+                        style={{
+                          opacity: activeTab === "auth-codes" ? 0.9 : 0.7,
+                          fontSize: "0.75rem",
+                        }}
+                      >
+                        Manage authorization codes
+                      </small>
+                    </div>
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Main Content Area */}
+        {/* Main Content Area - same structure as Chart of Accounts: fixed card + overflow hidden, content animates inside */}
         <div className="col-12 col-lg-9">
-          {/* Password Tab */}
-          {activeTab === "password" && (
-            <div
-              className="card border-0 h-100"
-              style={{ boxShadow: "0 8px 25px rgba(0, 0, 0, 0.15)" }}
-            >
-              <div className="card-header bg-transparent border-0 py-3 px-3">
-                <div className="d-flex align-items-center">
-                  <div
-                    className="rounded-circle d-flex align-items-center justify-content-center me-2"
-                    style={{
-                      width: "28px",
-                      height: "28px",
-                      background:
-                        "linear-gradient(135deg, #1f3e6d 0%, #0c203f 100%)",
-                      color: "white",
-                    }}
+          <div
+            className="card border-0 h-100 rounded-3"
+            style={{ boxShadow: "0 8px 25px rgba(0, 0, 0, 0.15)" }}
+          >
+            <div className="card-body p-2 p-md-3 py-4" style={{ overflow: "hidden" }}>
+              <AnimatePresence mode="wait">
+                {/* Password Tab (or default for personnel when auth-codes not available) */}
+                {(activeTab === "password" ||
+                  (activeTab === "auth-codes" && !showAuthCodes)) && (
+                  <motion.div
+                    key="password"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -16 }}
+                    transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
                   >
-                    <FaLock size={14} />
-                  </div>
-                  <h6
-                    className="mb-0 fw-bold"
-                    style={{ color: theme.textPrimary }}
-                  >
-                    Change Password
-                  </h6>
-                </div>
-              </div>
-              <div className="card-body p-3">
-                <div
-                  className="alert alert-info mb-4"
-                  style={{
-                    backgroundColor: "rgba(31, 62, 109, 0.1)",
-                    borderColor: "var(--primary-light)",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  <strong>Note:</strong> You can change your password here.
-                  Ensure your new password is at least 6 characters long and
-                  keep it secure.
-                </div>
+                    <div className="d-flex align-items-center mb-3">
+                      <div
+                        className="rounded-circle d-flex align-items-center justify-content-center me-2"
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          background:
+                            "linear-gradient(135deg, #1f3e6d 0%, #0c203f 100%)",
+                          color: "white",
+                        }}
+                      >
+                        <FaLock size={14} />
+                      </div>
+                      <h6
+                        className="mb-0 fw-bold"
+                        style={{ color: theme.textPrimary }}
+                      >
+                        Change Password
+                      </h6>
+                    </div>
+                    <div
+                      className="alert alert-info mb-3 mb-md-4 small py-2 py-md-3"
+                      style={{
+                        backgroundColor: "rgba(31, 62, 109, 0.1)",
+                        borderColor: "var(--primary-light)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      <strong>Note:</strong> You can change your password here.
+                      Ensure your new password is at least 6 characters long and
+                      keep it secure.
+                    </div>
 
-                <form onSubmit={handlePasswordChange}>
-                  <div className="row g-3">
+                    <form onSubmit={handlePasswordChange}>
+                  <div className="row g-2 g-md-3">
                     {/* Current Password */}
                     <div className="col-12">
                       <label
@@ -761,7 +805,13 @@ const Settings = () => {
                           type={showNewPassword ? "text" : "password"}
                           name="new_password"
                           className={`form-control border-start-0 ps-2 fw-semibold ${
-                            formErrors.new_password ? "is-invalid" : ""
+                            formErrors.new_password || newPasswordError
+                              ? "is-invalid"
+                              : ""
+                          } ${
+                            passwordForm.new_password.length >= 6
+                              ? "is-valid"
+                              : ""
                           }`}
                           style={{
                             backgroundColor: "var(--input-bg)",
@@ -796,17 +846,26 @@ const Settings = () => {
                           </button>
                         </span>
                       </div>
-                      {formErrors.new_password && (
+                      {(formErrors.new_password || newPasswordError) && (
                         <div className="invalid-feedback d-block small mt-1">
-                          {formErrors.new_password[0]}
+                          {formErrors.new_password?.[0] || newPasswordError}
                         </div>
                       )}
-                      <div
-                        className="form-text small mt-1"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        Password must be at least 6 characters long
-                      </div>
+                      {!formErrors.new_password && !newPasswordError && (
+                        <div
+                          className="form-text small mt-1"
+                          style={{
+                            color:
+                              passwordForm.new_password.length >= 6
+                                ? "var(--success, #198754)"
+                                : "var(--text-muted)",
+                          }}
+                        >
+                          {passwordForm.new_password.length >= 6
+                            ? "✓ At least 6 characters"
+                            : "Password must be at least 6 characters long"}
+                        </div>
+                      )}
                     </div>
 
                     {/* Confirm New Password */}
@@ -834,10 +893,10 @@ const Settings = () => {
                           type={showConfirmPassword ? "text" : "password"}
                           name="new_password_confirmation"
                           className={`form-control border-start-0 ps-2 fw-semibold ${
-                            formErrors.new_password_confirmation
+                            formErrors.new_password_confirmation || confirmError
                               ? "is-invalid"
                               : ""
-                          }`}
+                          } ${confirmMatch ? "is-valid" : ""}`}
                           style={{
                             backgroundColor: "var(--input-bg)",
                             color: "var(--input-text)",
@@ -873,19 +932,36 @@ const Settings = () => {
                           </button>
                         </span>
                       </div>
-                      {formErrors.new_password_confirmation && (
+                      {(formErrors.new_password_confirmation ||
+                        confirmError) && (
                         <div className="invalid-feedback d-block small mt-1">
-                          {formErrors.new_password_confirmation[0]}
+                          {formErrors.new_password_confirmation?.[0] ||
+                            confirmError}
+                        </div>
+                      )}
+                      {confirmMatch && (
+                        <div
+                          className="form-text small mt-1"
+                          style={{ color: "var(--success, #198754)" }}
+                        >
+                          ✓ Passwords match
                         </div>
                       )}
                     </div>
 
-                    {/* Submit Button */}
+                    {/* Submit Button - disabled until real-time validation passes */}
                     <div className="col-12">
                       <button
                         type="submit"
                         className="btn w-100 d-flex align-items-center justify-content-center py-2 border-0 position-relative overflow-hidden"
-                        disabled={isPasswordLoading}
+                        disabled={
+                          isPasswordLoading ||
+                          !!newPasswordError ||
+                          !!confirmError ||
+                          !passwordForm.current_password ||
+                          !passwordForm.new_password ||
+                          !passwordForm.new_password_confirmation
+                        }
                         style={{
                           background:
                             "linear-gradient(135deg, #0c203f 0%, #1f3e6d 100%)",
@@ -929,40 +1005,41 @@ const Settings = () => {
                     </div>
                   </div>
                 </form>
-              </div>
-            </div>
-          )}
+                  </motion.div>
+                )}
 
-          {/* Authorization Codes Tab */}
-          {activeTab === "auth-codes" && (
-            <div
-              className="card border-0 h-100"
-              style={{ boxShadow: "0 8px 25px rgba(0, 0, 0, 0.15)" }}
-            >
-              <div className="card-header bg-transparent border-0 py-3 px-3">
-                <div className="d-flex justify-content-between align-items-center">
-                  <div className="d-flex align-items-center">
-                    <div
-                      className="rounded-circle d-flex align-items-center justify-content-center me-2"
-                      style={{
-                        width: "28px",
-                        height: "28px",
-                        background:
-                          "linear-gradient(135deg, #0c203f 0%, #1f3e6d 100%)",
-                        color: "white",
-                      }}
-                    >
-                      <FaShieldAlt size={14} />
-                    </div>
-                    <h6
-                      className="mb-0 fw-bold"
-                      style={{ color: theme.textPrimary }}
-                    >
-                      Authorization Codes Management
-                    </h6>
-                  </div>
-                  <button
-                    className="btn btn-sm"
+                {/* Authorization Codes Tab - Admin only */}
+                {showAuthCodes && activeTab === "auth-codes" && (
+                  <motion.div
+                    key="auth-codes"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -16 }}
+                    transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+                  >
+                    <div className="d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-2 mb-3">
+                      <div className="d-flex align-items-center">
+                        <div
+                          className="rounded-circle d-flex align-items-center justify-content-center me-2"
+                          style={{
+                            width: "28px",
+                            height: "28px",
+                            background:
+                              "linear-gradient(135deg, #0c203f 0%, #1f3e6d 100%)",
+                            color: "white",
+                          }}
+                        >
+                          <FaShieldAlt size={14} />
+                        </div>
+                        <h6
+                          className="mb-0 fw-bold small text-break"
+                          style={{ color: theme.textPrimary }}
+                        >
+                          Authorization Codes Management
+                        </h6>
+                      </div>
+                      <button
+                        className="btn btn-sm w-100 w-sm-auto settings-add-code-btn"
                     onClick={() => {
                       if (actionLock) {
                         showToast.warning(
@@ -1007,14 +1084,12 @@ const Settings = () => {
                       }
                     }}
                   >
-                    <FaPlus className="me-1" />
-                    Add Code
-                  </button>
-                </div>
-              </div>
-              <div className="card-body p-3">
-                <div
-                  className="alert alert-info mb-4"
+                        <FaPlus className="me-1" />
+                        Add Code
+                      </button>
+                    </div>
+                    <div
+                      className="alert alert-info mb-3 mb-md-4 small py-2 py-md-3"
                   style={{
                     backgroundColor: "rgba(31, 62, 109, 0.1)",
                     borderColor: "var(--primary-light)",
@@ -1027,21 +1102,24 @@ const Settings = () => {
                 </div>
 
                 {loadingCodes ? (
-                  <div className="table-responsive">
-                    <table className="table table-striped table-hover mb-0">
+                  <div className="table-responsive overflow-auto settings-authcodes-table-wrap table-striped table-hover">
+                    <table
+                      className="table table-sm table-striped table-hover mb-0"
+                      style={{ minWidth: "520px" }}
+                    >
                       <thead
                         style={{ backgroundColor: "var(--background-light)" }}
                       >
                         <tr>
                           <th
                             style={{ width: "5%" }}
-                            className="text-center small fw-semibold"
+                            className="text-center small fw-semibold je-col-index"
                           >
                             #
                           </th>
                           <th
                             style={{ width: "15%" }}
-                            className="text-center small fw-semibold"
+                            className="text-center small fw-semibold je-col-actions"
                           >
                             Actions
                           </th>
@@ -1078,7 +1156,7 @@ const Settings = () => {
                             className="align-middle"
                             style={{ height: "70px" }}
                           >
-                            <td className="text-center">
+                            <td className="text-center je-col-index">
                               <div className="placeholder-wave">
                                 <span
                                   className="placeholder col-4"
@@ -1086,7 +1164,7 @@ const Settings = () => {
                                 ></span>
                               </div>
                             </td>
-                            <td className="text-center">
+                            <td className="text-center je-col-actions">
                               <div className="d-flex justify-content-center gap-1">
                                 {[1, 2].map((item) => (
                                   <div
@@ -1174,21 +1252,26 @@ const Settings = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="table-responsive">
-                      <table className="table table-striped table-hover mb-0">
+                    <div className="table-responsive overflow-auto settings-authcodes-table-wrap table-striped table-hover">
+                      <table
+                        className="table table-sm table-striped table-hover mb-0"
+                        style={{ minWidth: "520px" }}
+                      >
                         <thead
-                          style={{ backgroundColor: "var(--background-light)" }}
+                          style={{
+                            backgroundColor: "var(--background-light)",
+                          }}
                         >
                           <tr>
                             <th
                               style={{ width: "5%" }}
-                              className="text-center small fw-semibold"
+                              className="text-center small fw-semibold je-col-index"
                             >
                               #
                             </th>
                             <th
                               style={{ width: "15%" }}
-                              className="text-center small fw-semibold"
+                              className="text-center small fw-semibold je-col-actions"
                             >
                               Actions
                             </th>
@@ -1234,36 +1317,42 @@ const Settings = () => {
                               return (
                                 <tr key={code.id} className="align-middle">
                                   <td
-                                    className="text-center fw-bold"
+                                    className="text-center fw-bold je-col-index"
                                     style={{ color: "var(--text-primary)" }}
                                   >
                                     {startIndex + index + 1}
                                   </td>
-                                  <td className="text-center">
+                                  <td className="text-center je-col-actions">
                                     <div className="d-flex justify-content-center gap-1">
+                                      {/* Edit button - use green success style for consistency */}
                                       <button
-                                        className="btn btn-warning btn-sm text-white"
+                                        className="btn btn-success btn-sm text-white"
                                         onClick={() => handleEditCode(code)}
                                         disabled={isActionDisabled(code.id)}
                                         title="Edit Code"
                                         style={{
-                                          width: "36px",
-                                          height: "36px",
+                                          width: "32px",
+                                          height: "32px",
                                           borderRadius: "6px",
                                           transition: "all 0.2s ease-in-out",
+                                          padding: 0,
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
                                         }}
                                         onMouseEnter={(e) => {
-                                          if (!e.target.disabled) {
-                                            e.target.style.transform =
+                                          if (!e.currentTarget.disabled) {
+                                            e.currentTarget.style.transform =
                                               "translateY(-1px)";
-                                            e.target.style.boxShadow =
+                                            e.currentTarget.style.boxShadow =
                                               "0 4px 8px rgba(0,0,0,0.2)";
                                           }
                                         }}
                                         onMouseLeave={(e) => {
-                                          e.target.style.transform =
+                                          e.currentTarget.style.transform =
                                             "translateY(0)";
-                                          e.target.style.boxShadow = "none";
+                                          e.currentTarget.style.boxShadow =
+                                            "none";
                                         }}
                                       >
                                         {actionLoading === code.id ? (
@@ -1272,33 +1361,41 @@ const Settings = () => {
                                             role="status"
                                           ></span>
                                         ) : (
-                                          <i className="fas fa-edit"></i>
+                                          <FaEdit
+                                            style={{ fontSize: "0.875rem" }}
+                                          />
                                         )}
                                       </button>
 
+                                      {/* Delete button - keep red danger style */}
                                       <button
                                         className="btn btn-danger btn-sm text-white"
                                         onClick={() => handleDeleteCode(code)}
                                         disabled={isActionDisabled(code.id)}
                                         title="Delete Code"
                                         style={{
-                                          width: "36px",
-                                          height: "36px",
+                                          width: "32px",
+                                          height: "32px",
                                           borderRadius: "6px",
                                           transition: "all 0.2s ease-in-out",
+                                          padding: 0,
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
                                         }}
                                         onMouseEnter={(e) => {
-                                          if (!e.target.disabled) {
-                                            e.target.style.transform =
+                                          if (!e.currentTarget.disabled) {
+                                            e.currentTarget.style.transform =
                                               "translateY(-1px)";
-                                            e.target.style.boxShadow =
+                                            e.currentTarget.style.boxShadow =
                                               "0 4px 8px rgba(0,0,0,0.2)";
                                           }
                                         }}
                                         onMouseLeave={(e) => {
-                                          e.target.style.transform =
+                                          e.currentTarget.style.transform =
                                             "translateY(0)";
-                                          e.target.style.boxShadow = "none";
+                                          e.currentTarget.style.boxShadow =
+                                            "none";
                                         }}
                                       >
                                         {actionLoading === code.id ? (
@@ -1307,7 +1404,9 @@ const Settings = () => {
                                             role="status"
                                           ></span>
                                         ) : (
-                                          <i className="fas fa-trash"></i>
+                                          <FaTrash
+                                            style={{ fontSize: "0.875rem" }}
+                                          />
                                         )}
                                       </button>
                                     </div>
@@ -1358,12 +1457,15 @@ const Settings = () => {
                       </table>
                     </div>
 
-                    {/* Pagination */}
+                    {/* Pagination - stack on mobile */}
                     {Math.ceil(filteredCodes.length / itemsPerPage) > 1 && (
-                      <div className="card-footer bg-white border-top px-3 py-2">
-                        <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
-                          <div className="text-center text-md-start">
-                            <small style={{ color: "var(--text-muted)" }}>
+                      <div className="card-footer bg-white border-top px-2 px-md-3 py-2">
+                        <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2 flex-wrap">
+                          <div className="text-center text-md-start order-2 order-md-1 w-100 w-md-auto">
+                            <small
+                              className="small"
+                              style={{ color: "var(--text-muted)" }}
+                            >
                               Showing{" "}
                               <span
                                 className="fw-semibold"
@@ -1386,7 +1488,7 @@ const Settings = () => {
                             </small>
                           </div>
 
-                          <div className="d-flex align-items-center gap-2">
+                          <div className="d-flex align-items-center justify-content-center flex-wrap gap-2 order-1 order-md-2">
                             <button
                               className="btn btn-sm pagination-btn"
                               onClick={() =>
@@ -1479,11 +1581,14 @@ const Settings = () => {
                     )}
                   </>
                 )}
-              </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          )}
+          </div>
         </div>
       </div>
+      </motion.div>
 
       {/* Authorization Code Form Modal */}
       {showCodeForm && (
@@ -1497,10 +1602,10 @@ const Settings = () => {
             onClick={handleBackdropClick}
             tabIndex="-1"
           >
-            <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-dialog modal-dialog-centered auth-code-modal-dialog">
               <div
                 ref={contentRef}
-                className={`modal-content border-0 modal-content-animation ${
+                className={`modal-content border-0 modal-content-animation auth-code-modal ${
                   isClosing ? "exit" : ""
                 }`}
                 style={{
@@ -1511,10 +1616,10 @@ const Settings = () => {
               >
                 {/* Header */}
                 <div
-                  className="modal-header border-0 text-white modal-smooth"
+                  className="modal-header border-0 text-white modal-smooth auth-code-modal-header"
                   style={{ backgroundColor: "#0c203f" }}
                 >
-                  <h5 className="modal-title fw-bold">
+                  <h5 className="modal-title fw-bold text-truncate me-2 auth-code-modal-title">
                     <i
                       className={`fas ${
                         editingCode ? "fa-edit" : "fa-plus"
@@ -1536,9 +1641,9 @@ const Settings = () => {
                   ></button>
                 </div>
 
-                {/* Body */}
+                {/* Body - responsive padding */}
                 <div
-                  className="modal-body modal-smooth"
+                  className="modal-body modal-smooth px-2 px-sm-3 py-3"
                   style={{
                     backgroundColor: "#f8f9fa",
                   }}
@@ -1627,14 +1732,14 @@ const Settings = () => {
                   )}
                 </div>
 
-                {/* Footer */}
+                {/* Footer - stack on mobile, constrained width on large */}
                 <div
-                  className="modal-footer border-0 modal-smooth"
+                  className="modal-footer border-0 modal-smooth auth-code-modal-footer flex-column flex-sm-row gap-2"
                   style={{ backgroundColor: "#f8f9fa" }}
                 >
                   <button
                     type="button"
-                    className="btn btn-secondary btn-smooth"
+                    className="btn btn-secondary btn-smooth auth-code-modal-btn order-2 order-sm-1"
                     onClick={handleCloseModal}
                     disabled={codeFormLoading}
                   >
@@ -1642,7 +1747,7 @@ const Settings = () => {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-primary btn-smooth"
+                    className="btn btn-primary btn-smooth auth-code-modal-btn order-1 order-sm-2"
                     onClick={handleSaveCode}
                     disabled={!codeForm.code || codeFormLoading}
                     style={{
@@ -1701,7 +1806,135 @@ const Settings = () => {
           box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
         }
       `}</style>
-    </div>
+
+      {/* Authorization codes table: sticky # + Actions on mobile (match Activity Log / Clients AR) */}
+      <style>{`
+        @media (max-width: 767.98px) {
+          .settings-authcodes-table-wrap {
+            display: block;
+            position: relative;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            width: 100%;
+          }
+          .settings-authcodes-table-wrap table {
+            min-width: 560px;
+            border-collapse: separate;
+            border-spacing: 0;
+          }
+          .settings-authcodes-table-wrap .je-col-index,
+          .settings-authcodes-table-wrap .je-col-actions {
+            position: sticky;
+            z-index: 5;
+            background-color: #fff;
+          }
+          .settings-authcodes-table-wrap thead .je-col-index,
+          .settings-authcodes-table-wrap thead .je-col-actions {
+            z-index: 7;
+            background: #f8f9fa !important;
+          }
+          .settings-authcodes-table-wrap .je-col-index {
+            left: 0;
+            min-width: 44px;
+            width: 44px;
+            box-shadow: 2px 0 4px rgba(0,0,0,0.06);
+          }
+          .settings-authcodes-table-wrap .je-col-actions {
+            left: 44px;
+            min-width: 100px;
+            width: 100px;
+            box-shadow: 2px 0 4px rgba(0,0,0,0.06);
+          }
+          .settings-authcodes-table-wrap.table-striped > tbody > tr:nth-of-type(odd) > .je-col-index,
+          .settings-authcodes-table-wrap.table-striped > tbody > tr:nth-of-type(odd) > .je-col-actions {
+            background-color: rgba(0,0,0,0.05);
+          }
+          .settings-authcodes-table-wrap.table-hover > tbody > tr:hover > .je-col-index,
+          .settings-authcodes-table-wrap.table-hover > tbody > tr:hover > .je-col-actions {
+            background-color: rgba(0,0,0,0.075);
+          }
+        }
+      `}</style>
+
+      {/* Create Authorization Code modal - responsive */}
+      <style>{`
+        /* Modal dialog: wider on mobile, constrained on large screen */
+        .auth-code-modal-dialog {
+          margin: 0.75rem;
+          max-width: calc(100vw - 1.5rem);
+        }
+        @media (min-width: 576px) {
+          .auth-code-modal-dialog {
+            max-width: 420px;
+            margin: 1.75rem auto;
+          }
+        }
+        @media (min-width: 768px) {
+          .auth-code-modal-dialog {
+            max-width: 480px;
+          }
+        }
+
+        /* Top panel: larger padding and title on all screens */
+        .auth-code-modal .auth-code-modal-header {
+          padding: 0.875rem 1rem;
+        }
+        @media (min-width: 576px) {
+          .auth-code-modal .auth-code-modal-header {
+            padding: 1rem 1.25rem;
+          }
+        }
+        @media (min-width: 768px) {
+          .auth-code-modal .auth-code-modal-header {
+            padding: 1.25rem 1.5rem;
+          }
+        }
+        .auth-code-modal .auth-code-modal-title {
+          font-size: 1rem;
+        }
+        @media (min-width: 576px) {
+          .auth-code-modal .auth-code-modal-title {
+            font-size: 1.1rem;
+          }
+        }
+        @media (min-width: 768px) {
+          .auth-code-modal .auth-code-modal-title {
+            font-size: 1.25rem;
+          }
+        }
+
+        /* Body: comfortable padding */
+        .auth-code-modal .auth-code-modal-body {
+          padding: 1rem;
+        }
+        @media (min-width: 576px) {
+          .auth-code-modal .auth-code-modal-body {
+            padding: 1.25rem 1.5rem;
+          }
+        }
+
+        /* Footer buttons: full width on mobile, constrained on large */
+        .auth-code-modal .auth-code-modal-footer {
+          padding: 0.875rem 1rem;
+        }
+        @media (min-width: 576px) {
+          .auth-code-modal .auth-code-modal-footer {
+            padding: 1rem 1.25rem;
+          }
+        }
+        .auth-code-modal .auth-code-modal-btn {
+          width: 100%;
+          min-width: 0;
+        }
+        @media (min-width: 576px) {
+          .auth-code-modal .auth-code-modal-btn {
+            width: auto;
+            max-width: 10rem;
+            min-width: 7rem;
+          }
+        }
+      `}</style>
+    </>
   );
 };
 

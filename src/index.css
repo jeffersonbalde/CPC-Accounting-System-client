@@ -28,9 +28,9 @@
   --sidebar-border: rgba(240, 180, 41, 0.25);
   --sidebar-shadow: rgba(0, 0, 0, 0.25);
 
-  /* Footer Colors */
-  --footer-bg: #f4f6fa;
-  --footer-border: #dfe4ee;
+  /* Footer Colors - light blue shade, text unchanged for clarity */
+  --footer-bg: #e4ecf7;
+  --footer-border: #c5d4eb;
   --footer-text: #4a566d;
 
   /* Neutral Colors */
@@ -98,12 +98,31 @@ label {
   background: var(--topbar-bg) !important;
   border-bottom: none !important;
   box-shadow: 0 4px 20px var(--topbar-shadow);
-  z-index: 1039;
+  z-index: 1050;
   position: fixed;
   top: 0;
   right: 0;
   left: 0;
   height: 60px;
+  padding-left: 0;
+  padding-right: 1rem;
+}
+
+/* Match sidebar left spacing exactly: .sb-sidenav-menu-heading and .sb-sidenav .nav-link use 1.5rem */
+.sb-topnav .topbar-brand-wrap,
+.sb-topnav .navbar-brand.topbar-brand-wrap {
+  /* Match sidebar nav-link (1.5rem padding + 4px border-left) */
+  padding-left: calc(1.5rem + 4px) !important;
+  margin-left: 0 !important;
+}
+
+/* Topbar dropdowns must appear above sidebar (sidebar z-index 1038) */
+.sb-topnav .dropdown-menu {
+  z-index: 10050 !important;
+  background-color: #fff !important;
+  color: #212529 !important;
+  border: 1px solid #e0e0e0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
 }
 
 .sb-topnav .navbar-brand {
@@ -126,7 +145,8 @@ label {
 }
 
 @media (min-width: 1006px) {
-  .sb-topnav .btn-link {
+  /* Apply wide margin only to sidebar toggle, not account brand */
+  .sb-topnav #sidebarToggle.btn-link {
     margin: 0 3rem;
   }
 }
@@ -134,6 +154,16 @@ label {
 .sb-topnav .btn-link:hover {
   background-color: var(--topbar-hover) !important;
   transform: scale(1.05);
+}
+
+.sb-topnav .account-brand-btn:hover {
+  transform: none !important;
+}
+
+/* Remove generic .btn-link margins from account brand so it aligns with sidebar */
+.sb-topnav .account-brand-btn {
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 /* Greatly Improved Search Box Contrast - Clean White Design */
@@ -201,9 +231,110 @@ label {
 }
 
 .sb-topnav .dropdown-item:hover {
-  background: linear-gradient(135deg, var(--background-light) 0%, #e8f5e8 100%);
+  /* Neutral, subtle hover without shifting the menu */
+  background-color: rgba(15, 28, 54, 0.06);
   color: var(--primary-color);
-  transform: translateX(4px);
+  transform: none;
+}
+
+/* Account switcher dropdown: content and shade stay inside container, responsive */
+.sb-topnav .account-switcher-dropdown {
+  overflow: hidden !important;
+  padding: 8px 10px !important;
+}
+
+.sb-topnav .account-switcher-dropdown li {
+  border-bottom: 1px solid #dee2e6;
+}
+
+.sb-topnav .account-switcher-dropdown li:last-child {
+  border-bottom: none !important;
+}
+
+.sb-topnav .account-switcher-dropdown .dropdown-item {
+  margin: 2px 0;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 6px;
+  background-color: transparent;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.sb-topnav .account-switcher-dropdown .dropdown-item:hover {
+  background-color: rgba(12, 32, 63, 0.04) !important;
+  color: #0c203f !important;
+}
+
+/* Selected account – subtle blue tint, no yellow, no borders */
+.sb-topnav .account-switcher-dropdown .account-switcher-item.active {
+  background-color: rgba(12, 32, 63, 0.07) !important;
+  color: #0c203f !important;
+  box-shadow: none;
+}
+
+.sb-topnav .account-switcher-dropdown .account-switcher-item.active .fw-semibold {
+  color: #0c203f !important;
+}
+
+/* Account name: full on large screens, ellipsis on mobile when too long */
+.sb-topnav .account-switcher-dropdown .account-switcher-item .flex-grow-1 {
+  min-width: 0;
+}
+
+.sb-topnav .account-switcher-dropdown .account-switcher-name .fw-semibold {
+  display: block !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 768px) {
+  .sb-topnav .account-switcher-dropdown .account-switcher-name .fw-semibold {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+/* Responsive: cap width on large screens, fit viewport on small */
+@media (min-width: 400px) {
+  .sb-topnav .account-switcher-dropdown {
+    max-width: 320px !important;
+  }
+}
+
+@media (max-width: 399px) {
+  .sb-topnav .account-switcher-dropdown {
+    max-width: calc(100vw - 24px) !important;
+  }
+}
+
+/* Topbar: business name – truncate with ellipsis when too long (no wrap, no overflow) */
+.sb-topnav .topbar-account-name {
+  min-width: 0;
+  max-width: 140px;
+}
+@media (min-width: 576px) {
+  .sb-topnav .topbar-account-name {
+    max-width: 200px;
+  }
+}
+@media (min-width: 768px) {
+  .sb-topnav .topbar-account-name {
+    max-width: 260px;
+  }
+}
+@media (min-width: 992px) {
+  .sb-topnav .topbar-account-name {
+    max-width: 320px;
+  }
+}
+.sb-topnav .topbar-account-name-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sb-topnav .dropdown-header {
@@ -304,33 +435,161 @@ label {
   transform: scale(1.1);
 }
 
+/* Parent/child sidebar – match reference repo (AJCreativeStudio-client) */
 .sb-sidenav-collapse-arrow {
   color: rgba(240, 247, 240, 0.7) !important;
   margin-left: auto;
-  font-size: 0.875rem;
-  transition: transform 0.3s ease;
-  flex-shrink: 0; /* Prevent arrow from shrinking */
+  font-size: 0.75rem;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
-/* Collapsed menu items - Fixed to prevent overflow */
+.sb-sidenav-collapse-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+/* Parent link (toggle) – never use full .active gradient; subtle style when a child is active */
+.sb-sidenav .nav-link[href="#"],
+.sb-sidenav .nav-link.nav-link-parent {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sb-sidenav .nav-link.nav-link-parent.active,
+.sb-sidenav .nav-link[href="#"].active {
+  background: transparent !important;
+  border-left-color: rgba(245, 245, 245, 0.2) !important;
+  color: var(--sidebar-text) !important;
+  box-shadow: none !important;
+}
+
+.sb-sidenav .nav-link.nav-link-parent.has-active-child {
+  background: rgba(245, 245, 245, 0.06) !important;
+  border-left-color: rgba(240, 180, 41, 0.5) !important;
+  color: var(--sidebar-text) !important;
+  font-weight: 500;
+  box-shadow: none !important;
+}
+
+.sb-sidenav .nav-link.nav-link-parent.has-active-child .sb-nav-link-icon,
+.sb-sidenav
+  .nav-link.nav-link-parent.has-active-child
+  .sb-sidenav-collapse-arrow {
+  color: rgba(240, 247, 240, 0.9) !important;
+}
+
+.sb-sidenav .nav-link[href="#"]:hover .sb-sidenav-collapse-arrow,
+.sb-sidenav .nav-link.nav-link-parent:hover .sb-sidenav-collapse-arrow {
+  color: rgba(245, 245, 245, 0.9) !important;
+}
+
+/* Nested menu – show/hide via .show (reference repo pattern) */
 .sb-sidenav-menu-nested {
   margin: 0;
+  margin-left: 1.5rem;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  border-left: 2px solid rgba(245, 245, 245, 0.1);
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sb-sidenav-menu-nested.show {
+  max-height: 500px;
+  opacity: 1;
   padding: 0.25rem 0;
-  background: rgba(21, 32, 21, 0.5);
-  overflow: hidden; /* Prevent nested overflow */
+  margin-left: 1.5rem;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sb-sidenav-menu-nested .nav-link {
-  padding-left: 3rem;
+  padding: 0.65rem 1.5rem 0.65rem 2rem;
   font-size: 0.875rem;
-  border-left: 2px solid transparent;
-  margin: 0.05rem 0; /* Reduced margin */
-  min-height: auto; /* Remove any fixed height */
+  border-left: 3px solid transparent;
+  border-right: none;
+  margin: 0;
+  min-height: auto;
+  transition: all 0.2s ease;
+  position: relative;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.sb-sidenav-menu-nested .nav-link .sb-nav-link-icon {
+  margin-right: 0.75rem;
+  margin-left: 0;
+  order: 0;
+}
+
+.sb-sidenav-menu-nested .nav-link::before {
+  content: "";
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: rgba(245, 245, 245, 0.5);
+  transition: all 0.2s ease;
 }
 
 .sb-sidenav-menu-nested .nav-link:hover {
-  background-color: rgba(51, 108, 53, 0.15);
-  border-left-color: var(--accent-light);
+  background-color: rgba(240, 180, 41, 0.15);
+  border-left-color: var(--accent-color);
+  border-right: none;
+  padding-left: 2.5rem;
+  padding-right: 1.5rem;
+}
+
+.sb-sidenav-menu-nested .nav-link:hover .sb-nav-link-icon {
+  color: var(--accent-light) !important;
+}
+
+.sb-sidenav-menu-nested .nav-link:hover::before {
+  background-color: var(--accent-color);
+  width: 6px;
+  height: 6px;
+  left: 1.75rem;
+}
+
+.sb-sidenav-menu-nested .nav-link.active {
+  background: linear-gradient(
+    90deg,
+    rgba(240, 180, 41, 0.25) 0%,
+    rgba(240, 180, 41, 0.08) 100%
+  );
+  border-left-color: var(--accent-color);
+  border-right: none;
+  color: var(--sidebar-text) !important;
+  font-weight: 600;
+  padding-left: 2.5rem;
+  padding-right: 1.5rem;
+}
+
+.sb-sidenav-menu-nested .nav-link.active::before {
+  background-color: var(--accent-color);
+  width: 6px;
+  height: 6px;
+  left: 1.75rem;
+}
+
+/* Active child: use accent (gold) for icon so it’s never dark on dark – good contrast */
+.sb-sidenav-menu-nested .nav-link.active .sb-nav-link-icon {
+  color: var(--accent-color) !important;
 }
 
 /* Sidebar footer */
@@ -406,7 +665,7 @@ label {
   min-width: 0;
   flex-grow: 1;
   min-height: calc(100vh - 60px);
-  overflow-x: hidden; /* Prevent horizontal scroll */
+  overflow-x: hidden;
 }
 
 /* ===== LAYOUT STYLES ===== */
@@ -421,12 +680,15 @@ label {
 
 .sb-nav-fixed #layoutSidenav #layoutSidenav_content {
   padding-left: 250px;
+  /* padding-right will be set by evenMargins.js to match scrollbar width for even margins */
   transition: padding-left 0.15s ease-in-out;
-  overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
   height: auto;
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 60px);
+  flex: 1;
+  min-height: 0;
 }
 
 /* Toggled state */
@@ -785,6 +1047,47 @@ footer small {
   scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1);
 }
 
+/* ===== Chart of Accounts action buttons (corporate style) ===== */
+.coa-action-btn {
+  border-radius: 4px;
+  padding-inline: 0.75rem;
+  padding-block: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border-width: 1px;
+  border-style: solid;
+  transition: all 0.18s ease-in-out;
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+}
+
+.coa-action-btn-edit {
+  border-color: #d0d7e2;
+  background-color: #ffffff;
+  color: #0c203f;
+}
+
+.coa-action-btn-edit:hover:not(:disabled) {
+  border-color: #c4ccd9; /* subtle greyish border on hover */
+  background-color: rgba(12, 32, 63, 0.04);
+}
+
+.coa-action-btn-delete {
+  border-color: rgba(220, 53, 69, 0.2);
+  background-color: #ffffff;
+  color: #dc3545;
+}
+
+.coa-action-btn-delete:hover:not(:disabled) {
+  border-color: #c4ccd9; /* subtle greyish border on hover */
+  background-color: rgba(220, 53, 69, 0.04);
+}
+
+.coa-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 /* ---------- Ensure topbar always sticks to viewport ---------- */
 .sb-topnav {
   position: fixed !important;
@@ -810,6 +1113,14 @@ body {
 #layoutSidenav_content main {
   margin-top: 4.5rem;
   padding-top: 0.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Match Journal Entries alignment: page content fills main area (no extra boxing) */
+#layoutSidenav_content main > .container-fluid {
+  width: 100%;
+  max-width: none;
 }
 
 /* Ensure main content never overlaps topbar */
@@ -818,7 +1129,7 @@ body,
   overflow-x: hidden;
 }
 
-/* Prevent double scrollbar issue */
+/* Prevent double scrollbar issue (match reference layout) */
 html,
 body {
   height: auto;
@@ -1117,9 +1428,9 @@ body {
   }
 }
 
-/* Ensure topbar stays below */
+/* Ensure topbar and its dropdowns are ABOVE the sidebar (which is 1038) */
 .sb-topnav {
-  z-index: 1000 !important;
+  z-index: 11000 !important;
 }
 
 /* Avatar Modal Styles */
@@ -1541,11 +1852,6 @@ body {
   border-color: var(--border-color);
 }
 
-/* Add this wrapper to your action buttons too */
-.account-approvals-container .action-btn {
-  /* your action button styles */
-}
-
 /* Action button styles */
 .action-btn {
   width: 32px;
@@ -1755,9 +2061,24 @@ body {
   transform: scale(1.1);
 }
 
+/* ---------- Layer above topbar (topbar z-index 11000) ---------- */
+/* Toasts, modals, and alerts must appear above the fixed topbar */
+.Toastify__toast-container {
+  z-index: 99999 !important;
+}
+.modal,
+.modal.show,
+.modal-backdrop,
+.modal-backdrop.show {
+  z-index: 12000 !important;
+}
+.modal-dialog {
+  z-index: 12001 !important;
+}
+
 /* SweetAlert2 custom styles */
 .swal2-container {
-  z-index: 1060;
+  z-index: 99999 !important;
 }
 
 .swal2-popup {
@@ -1934,6 +2255,228 @@ body {
   padding: 0.75rem 0.5rem;
 }
 
+/* Remove default Bootstrap accordion caret for COA headers (we use custom icons) */
+.accounts-coa-accordion-toggle::after {
+  display: none !important;
+}
+
+.accounts-coa-page .coa-accordion-collapse {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.22s ease-in-out, opacity 0.22s ease-in-out;
+}
+
+.accounts-coa-page .coa-accordion-collapse.show {
+  max-height: 1200px; /* large enough for table content */
+  opacity: 1;
+}
+
+/* Current Balance values – responsive, clickable for full amount */
+.coa-balance-value {
+  display: inline-block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.coa-balance-value:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .coa-balance-value {
+    font-size: 0.85rem;
+  }
+}
+
+/* Account Name column – truncation with ellipsis */
+.coa-account-name {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 992px) {
+  .coa-account-name {
+    max-width: 160px;
+  }
+}
+
+@media (max-width: 768px) {
+  .coa-account-name {
+    max-width: 120px;
+  }
+}
+
+.accounts-coa-type-name {
+  /* no-op – class kept for backward compatibility if used elsewhere */
+}
+
+/* Sticky actions column for Chart of Accounts on small screens */
+.accounts-coa-page .coa-coa-actions-col {
+  white-space: nowrap;
+  padding-left: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  /* Default: sticky actions column on small screens (Chart of Accounts) */
+  .accounts-coa-page .coa-coa-actions-col {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background-color: #ffffff;
+    box-shadow: 2px 0 4px rgba(15, 23, 42, 0.06);
+  }
+
+  /* Manage Account Types table: sticky row index + actions side by side */
+  .accounts-coa-page .account-types-table .coa-row-index-col {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background-color: #ffffff;
+    box-shadow: 2px 0 4px rgba(15, 23, 42, 0.06);
+  }
+
+  .accounts-coa-page .account-types-table .coa-coa-actions-col {
+    position: sticky;
+    left: 48px; /* width of index column */
+    z-index: 2;
+    background-color: #ffffff;
+    box-shadow: 2px 0 4px rgba(15, 23, 42, 0.06);
+  }
+
+  /* Manage Account Types table: sticky combined "# + Actions" column */
+  .accounts-coa-page .account-types-table .coa-coa-actions-col {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background-color: #ffffff;
+    box-shadow: 2px 0 4px rgba(15, 23, 42, 0.06);
+  }
+}
+
+/* Business Accounts – top header: New Business button responsive */
+.accounts-coa-new-business-btn {
+  width: 100%;
+  min-width: 140px;
+}
+@media (min-width: 768px) {
+  .accounts-coa-new-business-btn {
+    width: auto;
+  }
+}
+
+/* Chart of Accounts tab – Add Account button full width on mobile */
+.coa-tab-add-account-btn {
+  width: 100%;
+}
+@media (min-width: 768px) {
+  .coa-tab-add-account-btn {
+    width: auto;
+  }
+}
+
+/* Settings tab – content flex so Delete Business sits at bottom */
+.settings-tab-content {
+  min-height: 400px;
+}
+.settings-tab-delete-section {
+  border-top: 1px solid var(--border-color, #dee2e6);
+  margin-top: 1.5rem;
+}
+@media (min-width: 768px) {
+  .settings-tab-delete-section {
+    margin-top: auto;
+  }
+}
+
+/* Settings tab – corporate layout and responsive spacing */
+.settings-tab-title {
+  font-size: clamp(1.1rem, 2.5vw, 1.25rem);
+}
+.settings-tab-card {
+  border: 1px solid var(--border-color, #e9ecef);
+}
+.settings-tab-card-header {
+  border-bottom-color: var(--border-color, #e9ecef) !important;
+}
+.settings-tab-card .card-body {
+  padding: 1rem;
+}
+@media (min-width: 768px) {
+  .settings-tab-card .card-body {
+    padding: 1.25rem 1.5rem;
+  }
+}
+
+/* Settings tab – same left/right margin as other tabs on mobile for consistency */
+@media (max-width: 767px) {
+  .accounts-coa-page .settings-tab-content .settings-tab-card {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    width: calc(100% + 2rem);
+  }
+  .accounts-coa-page .settings-tab-content .settings-tab-card .card-header,
+  .accounts-coa-page .settings-tab-content .settings-tab-card .card-body {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+.settings-tab-btn-primary,
+.settings-tab-btn-secondary {
+  min-width: 140px;
+}
+/* Edit Account Details: full width on mobile only, auto on large screens */
+.settings-tab-edit-details-btn {
+  width: 100%;
+}
+@media (min-width: 768px) {
+  .settings-tab-edit-details-btn {
+    width: auto;
+  }
+}
+@media (max-width: 767px) {
+  .settings-tab-btn-primary,
+  .settings-tab-btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Settings tab – Business Name read-only field (no focus, not clickable as input) */
+.settings-business-name-readonly {
+  cursor: default;
+  background-color: var(--background-light, #f8f9fa) !important;
+}
+.settings-business-name-readonly:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Settings tab – Delete Business button full width on mobile */
+.settings-tab-delete-business-btn {
+  width: 100%;
+}
+@media (min-width: 768px) {
+  .settings-tab-delete-business-btn {
+    width: auto;
+  }
+}
+
+/* Account Types tab – header button full width on mobile only */
+.account-types-tab-content .account-types-add-btn {
+  width: 100%;
+}
+@media (min-width: 768px) {
+  .account-types-tab-content .account-types-add-btn {
+    width: auto;
+  }
+}
+
 /* Allow specific columns to wrap if needed */
 .account-approvals-container .table td:nth-child(3), /* User Information */
 .account-approvals-container .table td:nth-child(5) {
@@ -2015,7 +2558,6 @@ body {
 
 .btn-smooth:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .btn-smooth:active {
@@ -2081,4 +2623,359 @@ body {
   opacity: 0.7;
   cursor: not-allowed;
   box-shadow: 0 4px 12px rgba(14, 37, 75, 0.25);
+}
+
+/* ===== SETTINGS PAGE – MOBILE RESPONSIVE & HOVER FIX ===== */
+/* Remove Bootstrap .btn.active overlay so selected tab text is solid white */
+.settings-page .settings-tab-btn.settings-tab-selected,
+.settings-page .settings-tab-btn.settings-tab-selected *,
+.settings-page .settings-tab-btn.settings-tab-selected .fw-semibold,
+.settings-page .settings-tab-btn.settings-tab-selected small {
+  color: #fff !important;
+  opacity: 1;
+}
+.settings-page .settings-tab-btn.settings-tab-selected::before,
+.settings-page .settings-tab-btn.settings-tab-selected::after {
+  display: none !important;
+}
+.settings-page .settings-tab-btn {
+  overflow: visible;
+}
+.settings-page .settings-tab-btn:focus {
+  box-shadow: none;
+  outline: none;
+}
+
+.settings-page .table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-left: -0.25rem;
+  margin-right: -0.25rem;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+}
+
+@media (max-width: 575.98px) {
+  .settings-page .settings-menu-card .card-body .btn {
+    font-size: 0.8rem;
+  }
+  .settings-page .settings-menu-card .btn .fw-semibold {
+    font-size: 0.8rem !important;
+  }
+  .settings-page .settings-menu-card .btn small {
+    font-size: 0.7rem !important;
+  }
+}
+
+@media (min-width: 992px) {
+  .settings-page .settings-menu-card .card-body .btn {
+    min-width: 100%;
+  }
+}
+
+/* Large screen: center Settings header (icon + title + subtitle) */
+@media (min-width: 992px) {
+  .settings-page .settings-page-header {
+    text-align: center;
+  }
+  .settings-page .settings-page-header .d-flex {
+    justify-content: center;
+  }
+}
+
+/* Large screen: Add Code button compact (no stretch) */
+@media (min-width: 992px) {
+  .settings-page .settings-add-code-btn {
+    flex: 0 0 auto;
+    width: auto !important;
+    max-width: 11rem;
+  }
+}
+
+/* Settings page – same left/right margin as Business Account & COA on mobile (do not use negative margins) */
+@media (max-width: 767px) {
+  .settings-page {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* ===== BUSINESS ACCOUNTS & CHART OF ACCOUNTS – corporate style ===== */
+/* Header action buttons – corporate look and hover */
+.accounts-coa-page .accounts-coa-header-btn {
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition: all 0.25s ease;
+}
+.accounts-coa-page .accounts-coa-header-btn-outline {
+  background-color: var(--background-white);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+.accounts-coa-page .accounts-coa-header-btn-primary-outline {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+.accounts-coa-page .accounts-coa-header-btn-primary-outline:hover:not(:disabled) {
+  background-color: rgba(12, 32, 63, 0.06);
+  border-color: var(--primary-light);
+  color: var(--primary-dark);
+  transform: translateY(-1px);
+}
+.accounts-coa-page .accounts-coa-header-btn-edit {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+.accounts-coa-page .accounts-coa-header-btn-edit:hover:not(:disabled) {
+  background-color: rgba(76, 88, 117, 0.08);
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+.accounts-coa-page .accounts-coa-header-btn-danger {
+  border-color: #dc3545;
+  color: #dc3545;
+}
+.accounts-coa-page .accounts-coa-header-btn-danger:hover:not(:disabled) {
+  background-color: rgba(220, 53, 69, 0.06);
+  border-color: #c82333;
+  color: #c82333;
+  transform: translateY(-1px);
+}
+.accounts-coa-page .accounts-coa-header-btn-primary {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%);
+  border: none;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(12, 32, 63, 0.35);
+}
+.accounts-coa-page .accounts-coa-header-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.accounts-coa-page .accounts-coa-btn {
+  transition: all 0.25s ease;
+  border-radius: 8px;
+}
+.accounts-coa-page .accounts-coa-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+.accounts-coa-page .accounts-coa-card {
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.accounts-coa-page .accounts-coa-card:hover {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1) !important;
+}
+.accounts-coa-page .accounts-coa-summary-card {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.accounts-coa-page .accounts-coa-summary-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Financial summary stats cards – smooth corporate hover */
+.accounts-coa-page .card.stats-card {
+  transition: box-shadow 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.accounts-coa-page .card.stats-card:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08) !important;
+  border-color: var(--primary-light) !important;
+  transform: translateY(-2px);
+}
+/* Clickable amount – smooth hover via CSS only */
+.accounts-coa-page .summary-card-value {
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.accounts-coa-page .summary-card-value:hover {
+  opacity: 0.85 !important;
+  transform: scale(1.02) !important;
+}
+.accounts-coa-page .accounts-coa-tab-btn:hover {
+  background: #e9ecef !important;
+  transform: translateY(-2px);
+}
+.accounts-coa-page .accounts-coa-tab-btn[style*="linear-gradient"]:hover {
+  background: linear-gradient(135deg, #0c203f 0%, #1f3e6d 100%) !important;
+  filter: brightness(1.08);
+}
+.accounts-coa-page .accounts-coa-tab-btn.accounts-coa-tab-selected,
+.accounts-coa-page .accounts-coa-tab-btn.accounts-coa-tab-selected *,
+.accounts-coa-page .accounts-coa-tab-btn.accounts-coa-tab-selected .fw-semibold,
+.accounts-coa-page .accounts-coa-tab-btn.accounts-coa-tab-selected small {
+  color: #fff !important;
+  opacity: 1;
+}
+
+/* ===== BUSINESS ACCOUNTS & CHART OF ACCOUNTS – mobile only (no change to large screen) ===== */
+@media (max-width: 767.98px) {
+  .accounts-coa-page .accounts-coa-header {
+    text-align: left;
+  }
+  .accounts-coa-page .accounts-coa-header .rounded-circle {
+    width: 40px !important;
+    height: 40px !important;
+  }
+  .accounts-coa-page .accounts-coa-header h1 {
+    font-size: 1.1rem !important;
+    line-height: 1.3;
+  }
+  .accounts-coa-page .accounts-coa-header .text-muted.small {
+    font-size: 0.75rem !important;
+    line-height: 1.4;
+  }
+  .accounts-coa-page .accounts-coa-header > div {
+    align-items: stretch !important;
+  }
+  .accounts-coa-page .accounts-coa-header > div > div:last-child {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem !important;
+  }
+  .accounts-coa-page .accounts-coa-header-actions {
+    border-end: none !important;
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+    flex-direction: column;
+    width: 100%;
+    gap: 0.5rem !important;
+  }
+  .accounts-coa-page .accounts-coa-header-actions .btn,
+  .accounts-coa-page .accounts-coa-header .accounts-coa-header-btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+  .accounts-coa-page .card.stats-card .card-body {
+    padding: 0.75rem !important;
+  }
+  .accounts-coa-page .card.stats-card .summary-card-value {
+    font-size: 1rem !important;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .accounts-coa-page .accounts-coa-header h1 {
+    font-size: 1rem !important;
+  }
+}
+
+/* Current Account badge – wrap text on all screen sizes, no overflow */
+.accounts-coa-page .accounts-coa-current-account {
+  max-width: 100%;
+  min-width: 0;
+}
+.accounts-coa-page .accounts-coa-current-account .badge {
+  display: inline-block;
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.3;
+}
+@media (max-width: 767.98px) {
+  .accounts-coa-page .accounts-coa-current-account {
+    width: 100%;
+    text-align: left;
+    margin-top: 0.5rem;
+  }
+  .accounts-coa-page .accounts-coa-current-account .badge {
+    text-align: left;
+    font-size: 0.875rem !important;
+    padding: 0.5rem 0.75rem !important;
+  }
+}
+
+/* Select Business Account card – stack above summary row (motion.div creates its own stacking context) */
+.accounts-coa-page .accounts-coa-selector-card {
+  position: relative;
+  z-index: 20;
+}
+
+/* Select Business Account dropdown – panel matches trigger width, long names truncate, above summary cards */
+.accounts-coa-business-select-dropdown.dropdown .dropdown-menu {
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+  z-index: 1060;
+}
+.accounts-coa-business-select-dropdown .dropdown-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ===== FOOTPRINT (audit trail) – responsive ===== */
+.footprint.footprint-responsive {
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.footprint-inner {
+  gap: 0.35rem 0.5rem;
+}
+
+/* Mobile: smaller text, stack-friendly, no overflow */
+@media (max-width: 575.98px) {
+  .footprint.footprint-responsive {
+    font-size: 0.75rem;
+    padding-top: 0.4rem;
+    margin-top: 0.4rem;
+  }
+
+  .footprint-inner {
+    gap: 0.25rem 0.4rem;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .footprint-item {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .footprint-value,
+  .footprint-date {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .footprint-sep {
+    display: none !important;
+  }
+}
+
+/* Small screens (sm): slightly larger, keep wrap */
+@media (min-width: 576px) and (max-width: 767.98px) {
+  .footprint.footprint-responsive {
+    font-size: 0.8125rem;
+  }
+}
+
+/* Medium and up: default size */
+@media (min-width: 768px) {
+  .footprint.footprint-responsive {
+    font-size: 0.875rem;
+  }
+
+  .footprint-inner {
+    gap: 0.5rem 0.75rem;
+  }
+}
+
+/* Large screens: comfortable spacing */
+@media (min-width: 992px) {
+  .footprint.footprint-responsive {
+    padding-top: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .footprint-inner {
+    gap: 0.5rem 1rem;
+  }
 }

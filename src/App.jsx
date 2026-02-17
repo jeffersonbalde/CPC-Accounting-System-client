@@ -4,6 +4,7 @@ import {
   Routes,
   Route,
   Navigate,
+  Outlet,
 } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -13,6 +14,9 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import PersonnelDashboard from "./pages/staff_admin/Dashboard";
 import AdminManagement from "./pages/admin/Admin/AdminManagement";
 import Personnel from "./pages/admin/Personnel/PersonnelManagement";
+import ActivityLog from "./pages/admin/Personnel/ActivityLog";
+import Settings from "./pages/admin/Settings/Settings";
+import UnifiedAccountManagement from "./pages/admin/Accounts/UnifiedAccountManagement";
 import ChartOfAccounts from "./pages/admin/Accounting/ChartOfAccounts";
 import JournalEntries from "./pages/admin/JournalEntries/JournalEntries";
 import CashBank from "./pages/admin/CashBank/CashBank";
@@ -23,8 +27,11 @@ import Expenses from "./pages/admin/Accounting/Expenses";
 import Reports from "./pages/admin/Accounting/Reports";
 import Layout from "./layout/Layout";
 import Preloader from "./components/Preloader";
-import AdminRoute from "./components/AdminRoute";
+import AdminOnly from "./components/AdminOnly";
+import PersonnelOnly from "./components/PersonnelOnly";
+import AccountingGuard from "./components/AccountingGuard";
 import NotFound from "./pages/public/NotFound";
+import Profile from "./pages/personnel/Profile";
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -47,126 +54,148 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/" element={<Login />} />
       <Route path="/login" element={<Login />} />
+      {/* Single Layout route: Layout stays mounted; only Outlet (page) changes on navigation */}
       <Route
-        path="/admin/dashboard"
+        path="/*"
         element={
           <ProtectedRoute>
-            <AdminDashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/personnel/dashboard"
-        element={
-          <ProtectedRoute>
-            <PersonnelDashboard />
-          </ProtectedRoute>
-        }
-      />
-      {/* User Management Routes */}
-      <Route
-        path="/admin/admins"
-        element={
-          <AdminRoute>
             <Layout>
+              <Outlet />
+            </Layout>
+          </ProtectedRoute>
+        }
+      >
+        <Route
+          path="admin/dashboard"
+          element={
+            <AdminOnly>
+              <AdminDashboard />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="personnel/dashboard"
+          element={
+            <PersonnelOnly>
+              <PersonnelDashboard />
+            </PersonnelOnly>
+          }
+        />
+        <Route
+          path="admin/admins"
+          element={
+            <AdminOnly>
               <AdminManagement />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/personnel"
-        element={
-          <AdminRoute>
-            <Layout>
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="admin/personnel"
+          element={
+            <AdminOnly>
               <Personnel />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      {/* Accounting Routes */}
-      <Route
-        path="/admin/accounting/chart-of-accounts"
-        element={
-          <AdminRoute>
-            <Layout>
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="admin/personnel/activity-log"
+          element={
+            <AdminOnly>
+              <ActivityLog />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="settings"
+          element={
+            <AdminOnly>
+              <Settings />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="admin/accounts"
+          element={
+            <AdminOnly>
+              <UnifiedAccountManagement />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <PersonnelOnly>
+              <Profile />
+            </PersonnelOnly>
+          }
+        />
+        <Route
+          path="admin/accounting/chart-of-accounts"
+          element={
+            <AdminOnly>
               <ChartOfAccounts />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/accounting/journal-entries"
-        element={
-          <AdminRoute>
-            <Layout>
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="admin/accounting/journal-entries"
+          element={
+            <AccountingGuard sidebarKey="journal_entries">
               <JournalEntries />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/accounting/cash-bank"
-        element={
-          <AdminRoute>
-            <Layout>
+            </AccountingGuard>
+          }
+        />
+        <Route
+          path="admin/accounting/cash-bank"
+          element={
+            <AccountingGuard sidebarKey="cash_bank">
               <CashBank />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/accounting/clients-ar"
-        element={
-          <AdminRoute>
-            <Layout>
+            </AccountingGuard>
+          }
+        />
+        <Route
+          path="admin/accounting/clients-ar"
+          element={
+            <AccountingGuard sidebarKey="clients_ar">
               <ClientsAR />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/accounting/suppliers-ap"
-        element={
-          <AdminRoute>
-            <Layout>
+            </AccountingGuard>
+          }
+        />
+        <Route
+          path="admin/accounting/suppliers-ap"
+          element={
+            <AccountingGuard sidebarKey="suppliers_ap">
               <SuppliersAP />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/accounting/income"
-        element={
-          <AdminRoute>
-            <Layout>
+            </AccountingGuard>
+          }
+        />
+        <Route
+          path="admin/accounting/income"
+          element={
+            <AccountingGuard sidebarKey="income">
               <Income />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/accounting/expenses"
-        element={
-          <AdminRoute>
-            <Layout>
+            </AccountingGuard>
+          }
+        />
+        <Route
+          path="admin/accounting/expenses"
+          element={
+            <AccountingGuard sidebarKey="expenses">
               <Expenses />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/accounting/reports"
-        element={
-          <AdminRoute>
-            <Layout>
+            </AccountingGuard>
+          }
+        />
+        <Route
+          path="admin/accounting/reports"
+          element={
+            <AccountingGuard sidebarKey="reports">
               <Reports />
-            </Layout>
-          </AdminRoute>
-        }
-      />
-      {/* Catch-all route for 404 */}
-      <Route path="*" element={<NotFound />} />
+            </AccountingGuard>
+          }
+        />
+        {/* 404 for unknown paths under layout */}
+        <Route path="*" element={<NotFound />} />
+      </Route>
     </Routes>
   );
 };
@@ -187,6 +216,7 @@ const App = () => {
           draggable
           pauseOnHover
           theme="light"
+          style={{ zIndex: 99999 }}
         />
       </AuthProvider>
     </Router>

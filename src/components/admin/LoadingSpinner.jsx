@@ -6,16 +6,16 @@ const LoadingSpinner = ({ text = "Loading..." }) => {
       className="d-flex flex-column align-items-center justify-content-center"
       style={{
         minHeight: "500px",
-        padding: "3rem",
+        padding: "2rem",
       }}
     >
       <div
         className="spinner-border"
         role="status"
         style={{
-          width: "3rem",
-          height: "3rem",
-          borderWidth: "0.25rem",
+          width: "2.25rem",
+          height: "2.25rem",
+          borderWidth: "0.2rem",
           borderColor: "var(--primary-color)",
           borderRightColor: "transparent",
         }}
@@ -24,7 +24,7 @@ const LoadingSpinner = ({ text = "Loading..." }) => {
       </div>
       {text && (
         <p
-          className="mt-3 mb-0 small fw-medium"
+          className="mt-2 mb-0 small fw-medium"
           style={{ color: "var(--text-muted)" }}
         >
           {text}

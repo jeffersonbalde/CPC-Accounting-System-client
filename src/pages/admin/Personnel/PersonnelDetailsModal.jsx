@@ -1,7 +1,54 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import Portal from "../../../components/Portal";
 
+/** Sections and items for displaying sidebar permissions (must match backend keys) */
+const PERMISSION_SECTIONS = [
+  {
+    section: "Core",
+    items: [
+      { key: "dashboard", label: "Dashboard", icon: "fas fa-tachometer-alt" },
+    ],
+  },
+  {
+    section: "Transactions",
+    items: [
+      {
+        key: "journal_entries",
+        label: "Journal Entries",
+        icon: "fas fa-file-invoice",
+      },
+      {
+        key: "cash_bank",
+        label: "Cash & Bank",
+        icon: "fas fa-money-bill-wave",
+      },
+    ],
+  },
+  {
+    section: "Receivables & Payables",
+    items: [
+      { key: "clients_ar", label: "Clients / AR", icon: "fas fa-user-tie" },
+      { key: "suppliers_ap", label: "Suppliers / AP", icon: "fas fa-truck" },
+    ],
+  },
+  {
+    section: "Income & Expenses",
+    items: [
+      { key: "income", label: "Income / Revenue", icon: "fas fa-arrow-up" },
+      { key: "expenses", label: "Expenses", icon: "fas fa-arrow-down" },
+    ],
+  },
+  {
+    section: "Reports",
+    items: [
+      { key: "reports", label: "Financial Reports", icon: "fas fa-chart-line" },
+    ],
+  },
+];
+
 const PersonnelDetailsModal = ({ personnel, onClose }) => {
+  const navigate = useNavigate();
   const [isClosing, setIsClosing] = useState(false);
 
   const getPersonnelAvatarUrl = useCallback((entity) => {
@@ -92,16 +139,6 @@ const PersonnelDetailsModal = ({ personnel, onClose }) => {
       setImageError(false);
     }, [personnel?.avatar_path]);
 
-    // Debug logging
-    React.useEffect(() => {
-      console.log("PersonnelDetailsModal - Personnel object:", personnel);
-      console.log(
-        "PersonnelDetailsModal - Avatar path:",
-        personnel?.avatar_path
-      );
-      console.log("PersonnelDetailsModal - Avatar URL:", avatarUrl);
-    }, [personnel, avatarUrl]);
-
     // If no avatar_path or image failed to load, show initials
     if (!personnel?.avatar_path || !avatarUrl || imageError) {
       return (
@@ -139,23 +176,7 @@ const PersonnelDetailsModal = ({ personnel, onClose }) => {
             height: "100%",
             objectFit: "cover",
           }}
-          onError={(e) => {
-            console.error(
-              "PersonnelDetailsModal - Failed to load avatar:",
-              avatarUrl
-            );
-            console.error(
-              "PersonnelDetailsModal - Personnel avatar_path:",
-              personnel?.avatar_path
-            );
-            setImageError(true);
-          }}
-          onLoad={() => {
-            console.log(
-              "PersonnelDetailsModal - Avatar loaded successfully:",
-              avatarUrl
-            );
-          }}
+          onError={() => setImageError(true)}
         />
       </div>
     );
@@ -354,11 +375,113 @@ const PersonnelDetailsModal = ({ personnel, onClose }) => {
                     </div>
                   </div>
                 </div>
+
+                {/* Navigation & Permissions */}
+                <div className="col-12">
+                  <div className="card border-0 bg-white">
+                    <div className="card-header bg-transparent border-bottom py-2">
+                      <h6 className="mb-0 fw-semibold text-dark">
+                        <i
+                          className="fas fa-list-alt me-2"
+                          style={{ color: "#0E254B" }}
+                        ></i>
+                        Navigation & Permissions
+                      </h6>
+                      <p className="mb-0 small text-muted mt-1">
+                        Sidebar menu access for this personnel
+                      </p>
+                    </div>
+                    <div className="card-body pt-3">
+                      {(() => {
+                        const access = Array.isArray(personnel.sidebar_access)
+                          ? personnel.sidebar_access.map((k) =>
+                              k === "invoices" ? "clients_ar" : k
+                            )
+                          : [];
+                        const hasAny = access.length > 0;
+                        return (
+                          <>
+                            {!hasAny ? (
+                              <p className="mb-0 small text-muted fst-italic">
+                                No sidebar access assigned.
+                              </p>
+                            ) : (
+                              <div className="row g-3">
+                                {PERMISSION_SECTIONS.map((group) => {
+                                  const allowed = group.items.filter((item) =>
+                                    access.includes(item.key)
+                                  );
+                                  if (allowed.length === 0) return null;
+                                  return (
+                                    <div
+                                      key={group.section}
+                                      className="col-12 col-sm-6 col-lg-4"
+                                    >
+                                      <div
+                                        className="rounded border p-3 h-100"
+                                        style={{
+                                          backgroundColor:
+                                            "var(--background-light, #f8f9fa)",
+                                          borderColor: "rgba(0,0,0,0.08)",
+                                        }}
+                                      >
+                                        <div
+                                          className="small fw-semibold text-uppercase mb-2"
+                                          style={{
+                                            color: "var(--text-muted)",
+                                            letterSpacing: "0.02em",
+                                          }}
+                                        >
+                                          {group.section}
+                                        </div>
+                                        <ul className="list-unstyled mb-0 small">
+                                          {allowed.map((item) => (
+                                            <li
+                                              key={item.key}
+                                              className="d-flex align-items-center gap-2 py-1"
+                                            >
+                                              <i
+                                                className={`${item.icon} text-primary`}
+                                                style={{
+                                                  width: "1rem",
+                                                  fontSize: "0.75rem",
+                                                }}
+                                                aria-hidden
+                                              />
+                                              <span className="text-dark">
+                                                {item.label}
+                                              </span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Footer */}
             <div className="modal-footer border-top bg-white modal-smooth">
+              <button
+                type="button"
+                className="btn btn-primary btn-smooth"
+                onClick={async () => {
+                  await closeModal();
+                  navigate("/admin/personnel/activity-log");
+                }}
+              >
+                <i className="fas fa-history me-2" aria-hidden />
+                View Activity Logs
+              </button>
               <button
                 type="button"
                 className="btn btn-outline-secondary btn-smooth"
